@@ -1,0 +1,104 @@
+{
+  "azure_devops": {
+    "organization": "your-organization-name",
+    "personal_access_token": "${AZURE_DEVOPS_PAT}",
+    "project": "your-project-name",
+    "base_url": "https://dev.azure.com/{organization}"
+  },
+  "github": {
+    "token": "${GITHUB_TOKEN}",
+    "organization": "your-github-org",
+    "base_url": "https://api.github.com",
+    "create_private_repos": true
+  },
+  "migration": {
+    "repository_mapping": {
+      "source-repo-1": "target-repo-1",
+      "source-repo-2": "target-repo-2"
+    },
+    "migrate_work_items": true,
+    "migrate_pull_requests": false,
+    "batch_size": 100,
+    "delay_between_requests": 0.5,
+    "max_retries": 3,
+    "include_closed_work_items": true
+  },
+  "work_item_mapping": {
+    "type_mappings": {
+      "User Story": "enhancement",
+      "Bug": "bug",
+      "Task": "task",
+      "Feature": "feature",
+      "Epic": "epic",
+      "Issue": "question"
+    },
+    "state_mappings": {
+      "New": "open",
+      "Active": "open",
+      "Resolved": "closed",
+      "Closed": "closed",
+      "Done": "closed",
+      "Removed": "closed"
+    },
+    "priority_mappings": {
+      "1": "priority-critical",
+      "2": "priority-high", 
+      "3": "priority-medium",
+      "4": "priority-low"
+    }
+  },
+  "field_mappings": {
+    "title_field": "System.Title",
+    "description_field": "System.Description",
+    "assigned_to_field": "System.AssignedTo",
+    "created_date_field": "System.CreatedDate",
+    "changed_date_field": "System.ChangedDate",
+    "state_field": "System.State",
+    "work_item_type_field": "System.WorkItemType",
+    "priority_field": "Microsoft.VSTS.Common.Priority",
+    "acceptance_criteria_field": "Microsoft.VSTS.Common.AcceptanceCriteria",
+    "reproduction_steps_field": "Microsoft.VSTS.TCM.ReproSteps",
+    "area_path_field": "System.AreaPath",
+    "iteration_path_field": "System.IterationPath"
+  },
+  "repository_settings": {
+    "default_branch": "main",
+    "has_issues": true,
+    "has_projects": true,
+    "has_wiki": false,
+    "auto_init": false,
+    "gitignore_template": "",
+    "license_template": ""
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "migration.log",
+    "console": true,
+    "max_file_size": 10485760,
+    "backup_count": 5
+  },
+  "rate_limiting": {
+    "azure_devops_requests_per_second": 10,
+    "github_requests_per_second": 30,
+    "enable_backoff": true,
+    "backoff_factor": 2.0
+  },
+  "filters": {
+    "exclude_repositories": [],
+    "include_repositories": [],
+    "exclude_work_item_types": ["Test Case", "Shared Steps"],
+    "date_range": {
+      "start_date": "",
+      "end_date": ""
+    },
+    "work_item_states": []
+  },
+  "output": {
+    "generate_reports": true,
+    "report_format": "json",
+    "output_directory": "./migration_reports",
+    "include_statistics": true,
+    "save_raw_data": false
+  }
+}
