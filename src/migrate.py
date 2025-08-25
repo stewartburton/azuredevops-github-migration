@@ -466,13 +466,8 @@ class GitMigrator:
             if not clone_url:
                 raise GitOperationError(f"No clone URL found for repository '{repo_name}'")
 
-            # Sanitize clone URL (remove embedded username like ORG@dev.azure.com)
-            parsed_clone = urlparse(clone_url)
-            netloc = parsed_clone.netloc
-            if '@' in netloc:
-                # Keep host part after last '@'
-                host = netloc.split('@')[-1]
-                clone_url = f"{parsed_clone.scheme}://{host}{parsed_clone.path}"
+            # Sanitize clone URL (remove any embedded userinfo)
+            clone_url = self.sanitize_clone_url(clone_url)
             
             self.logger.info(f"Starting Git migration: {clone_url} -> GitHub:{github_repo_name}")
             
@@ -529,12 +524,9 @@ class GitMigrator:
             raise
         finally:
             if temp_dir and os.path.exists(temp_dir):
-                try:
-                    shutil.rmtree(temp_dir)
-                    if temp_dir in self.temp_dirs:
-                        self.temp_dirs.remove(temp_dir)
-                except Exception as e:
-                    self.logger.warning(f"Failed to cleanup temp directory: {str(e)}")
+                self._safe_rmtree(temp_dir)
+                if temp_dir in self.temp_dirs:
+                    self.temp_dirs.remove(temp_dir)
     
     def _add_auth_to_url(self, url: str, username: str, password: str) -> str:
         """Add authentication to Git URL."""
@@ -583,10 +575,42 @@ class GitMigrator:
         for temp_dir in self.temp_dirs:
             try:
                 if os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
+                    self._safe_rmtree(temp_dir)
             except Exception as e:
                 self.logger.warning(f"Failed to cleanup temp directory {temp_dir}: {str(e)}")
         self.temp_dirs.clear()
+
+    def sanitize_clone_url(self, url: str) -> str:
+        """Remove embedded userinfo from clone URL to avoid double credential injection."""
+        try:
+            parsed = urlparse(url)
+            netloc = parsed.netloc
+            if '@' in netloc:
+                host = netloc.split('@')[-1]
+                return f"{parsed.scheme}://{host}{parsed.path}"
+            return url
+        except Exception:
+            return url
+
+    def _safe_rmtree(self, path: str, retries: int = 3):
+        import stat
+        def onerror(func, p, exc_info):
+            try:
+                if os.path.exists(p):
+                    os.chmod(p, stat.S_IWRITE)
+                    func(p)
+            except Exception:
+                pass
+        for attempt in range(1, retries + 1):
+            try:
+                if os.path.isdir(path):
+                    shutil.rmtree(path, onerror=onerror)
+                return
+            except Exception as e:
+                if attempt == retries:
+                    self.logger.warning(f"Failed to cleanup temp directory {path}: {e}")
+                else:
+                    time.sleep(0.2 * attempt)
 
 
 class PipelineConverter:
