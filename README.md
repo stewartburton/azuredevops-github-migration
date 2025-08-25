@@ -237,21 +237,114 @@ Contains helper functions for:
 
 ## Authentication
 
-### Azure DevOps Personal Access Token
+Use least privilege. Start with the minimum scopes and add only if the tool reports an authorization error for a feature you actually need. Fine‑grained tokens (GitHub) and short‑lived PATs (Azure DevOps) are preferred where possible.
 
-1. Go to Azure DevOps → User Settings → Personal Access Tokens
-2. Create new token with these scopes:
-   - **Code**: Read
-   - **Work Items**: Read
-   - **Project and Team**: Read
+### Required Personal Access Token (PAT) Scopes
 
-### GitHub Personal Access Token
+#### Azure DevOps PAT
+Minimum (repository migration only – no work items):
+- Code: Read (clone repositories, enumerate branches/tags)
+- Project and Team: Read (list projects & repos)
 
-1. Go to GitHub → Settings → Developer Settings → Personal Access Tokens
-2. Create token with these scopes:
-   - `repo` (for private repositories)
-   - `public_repo` (for public repositories)
-   - `admin:org` (if migrating to organization)
+Add ONLY if needed:
+- Work Items: Read (when converting work items to GitHub issues; omit when using `--no-issues` or Jira)
+- Code: Read & Write (only if you intentionally push changes back to Azure DevOps – not required for one‑way migration)
+- Other scopes (Packaging, Build, Release, Test) are NOT required unless you extend the tool to cover those assets.
+
+#### GitHub PAT
+Minimum (target repos already exist or created manually):
+- repo (covers contents, issues, pulls for private & public repos)
+
+Add ONLY if needed:
+- admin:org (tool needs to create new repositories inside an organization)
+- delete_repo (you implement rollback that deletes created repos)
+- workflow (you programmatically manipulate Actions runs beyond committing YAML files)
+- read:user (optional; basic profile lookups – not required for migration)
+
+Avoid broader scopes (e.g. admin:enterprise) unless explicitly justified.
+
+### Scenario Scope Matrix
+| Scenario | Azure DevOps Scopes | GitHub Scopes |
+|----------|---------------------|---------------|
+| Single repo, no issues | Code (Read), Project & Team (Read) | repo |
+| Repo + work items | Code (Read), Project & Team (Read), Work Items (Read) | repo |
+| Batch migrate multiple repos | Code (Read), Project & Team (Read) | repo |
+| Auto create org repos | Code (Read), Project & Team (Read) | repo, admin:org |
+| Rollback deletes repos | Code (Read), Project & Team (Read) | repo, delete_repo |
+
+### Obtaining Tokens
+Below are explicit steps to create the required Personal Access Tokens.
+
+#### Azure DevOps (Create PAT)
+1. In any Azure DevOps page, click your avatar (top-right) → **User settings** → **Personal access tokens**.
+2. Click **+ New Token**.
+3. Fill in:
+    - **Name**: e.g. `ado-migration-temp`.
+    - **Organization**: (choose the source org).
+    - **Expiration**: Short as practical (e.g. 30 or 60 days). For long batch waves, plan a rotation date.
+4. Under **Scopes**, click **Custom defined** and select ONLY the scopes you need (see tables above):
+    - Start with: Code (Read), Project and Team (Read).
+    - Add Work Items (Read) ONLY if migrating issues.
+    - Avoid adding Write unless you specifically push back to Azure DevOps.
+5. Click **Create**.
+6. Copy the token immediately (cannot be recovered later). Store it securely (secret manager, password vault, or environment variable injection). Do NOT commit it.
+7. (Optional) Record the expiration date in your migration plan.
+
+#### GitHub (Fine‑grained PAT – Recommended)
+1. GitHub → **Settings** (profile) → **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**.
+2. **Token name**: e.g. `gh-migration-fg`.
+3. **Expiration**: Select a short duration (or custom) matching migration window.
+4. **Resource owner**: Select the user or organization that owns the destination repositories.
+5. **Repository access**: Choose specific repositories (preferred) or **All repositories** only if necessary. If creating new repos, ensure permission to do so (org-level admin rights or use classic token with admin:org if required).
+6. **Permissions**: Under *Repository permissions* grant:
+    - **Contents**: Read and write (required for pushing migrated history).
+    - **Metadata**: Read (automatically included / required).
+    - **Issues**: Read & write (only if migrating work items → GitHub issues; otherwise leave at Read or No access).
+    - Additional (Actions, Administration) only if required by your scenario (e.g., repository creation may require classic token admin:org if fine‑grained lacks coverage in your context).
+7. Generate token and copy it once. Store securely.
+
+#### GitHub (Classic PAT – When Fine‑grained Not Suitable)
+1. GitHub → **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)** → **Generate new token**.
+2. **Note**: Provide a descriptive name, set a short expiration.
+3. Select scopes:
+    - **repo** (includes repo:status, repo_deployment, public_repo, repo:invite — enough for code + issues).
+    - **admin:org** ONLY if the tool itself will create repositories in the organization (and you have proper org role).
+    - **delete_repo** ONLY if you will automate rollback deletion.
+    - **workflow** ONLY if programmatically manipulating workflow runs beyond committing YAML.
+4. Generate & copy once. Store securely; treat as a secret.
+
+Choosing Between Fine‑grained vs Classic: Prefer fine‑grained; use classic only when you need composite scopes (e.g., admin:org + repo creation) not yet fully supported by fine‑grained tokens for your use case.
+
+### Environment Variable Setup
+Store tokens in environment variables or a local `.env` (never commit tokens).
+
+PowerShell (Windows):
+```powershell
+$env:AZURE_DEVOPS_PAT = 'xxxxxxxxxxxxxxxxxxxxxxxx'
+$env:GITHUB_TOKEN = 'ghp_xxxxxxxxxxxxxxxxxxxxx'
+```
+
+macOS / Linux (bash/zsh):
+```bash
+export AZURE_DEVOPS_PAT=xxxxxxxxxxxxxxxxxxxxxxxx
+export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxx
+```
+
+`.env` file example (ensure `.env` is in `.gitignore`):
+```
+AZURE_DEVOPS_PAT=xxxxxxxxxxxxxxxxxxxxxxxx
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxx
+```
+
+### Verification Checklist
+Run these steps; if a step fails, add only the missing scope:
+1. Analyze / list projects (`analyze.py --create-plan`) → validates Azure DevOps Code Read + Project & Team Read
+2. Dry run repo migration (`migrate.py --dry-run`) → validates Code Read
+3. Work item fetch (if not using `--no-issues`) → validates Work Items Read
+4. Repo creation in org (if configured) → validates admin:org
+5. Push to GitHub (actual migration) → validates repo scope
+
+After migration, narrow or revoke PATs if no ongoing synchronization is required.
 
 ## Migration Planning
 
