@@ -162,14 +162,14 @@ Example migration plan:
 ### Single Repository Migration
 
 ```bash
-# Basic migration
-python migrate.py --project "MyProject" --repo "my-repo"
+# Typical migration for Jira users (repository + pipelines only)
+python migrate.py --project "MyProject" --repo "my-repo" --no-issues
 
 # With custom GitHub repository name
-python migrate.py --project "MyProject" --repo "my-repo" --github-repo "new-repo-name"
+python migrate.py --project "MyProject" --repo "my-repo" --github-repo "new-repo-name" --no-issues
 
-# Skip work item migration
-python migrate.py --project "MyProject" --repo "my-repo" --no-issues
+# Full migration including work items (if not using Jira)
+python migrate.py --project "MyProject" --repo "my-repo"
 ```
 
 ### Batch Migration
@@ -234,7 +234,42 @@ Once you've verified the migration:
 
 ## Common Scenarios
 
-### Scenario 1: Large Organization Migration
+### Scenario 1: Organizations Using Jira (Most Common)
+
+If you're using Jira for issue tracking and only need to migrate Git repositories and pipelines:
+
+```bash
+# Single repository migration (no work items)
+python migrate.py --project "MyProject" --repo "my-app" --no-issues
+
+# Custom migration plan for Jira users
+cat > jira_user_plan.json << 'EOF'
+[
+  {
+    "project_name": "MyProject",
+    "repo_name": "frontend-app", 
+    "github_repo_name": "frontend-app",
+    "migrate_issues": false
+  },
+  {
+    "project_name": "MyProject",
+    "repo_name": "backend-api",
+    "github_repo_name": "backend-api", 
+    "migrate_issues": false
+  }
+]
+EOF
+
+python batch_migrate.py --plan jira_user_plan.json
+```
+
+**What you get:**
+- ✅ Complete Git history migration
+- ✅ Azure DevOps pipelines converted to GitHub Actions
+- ✅ All branches and tags preserved
+- ❌ No GitHub issues created (continue using Jira)
+
+### Scenario 2: Large Organization Migration
 
 ```bash
 # 1. Start with analysis

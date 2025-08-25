@@ -461,7 +461,14 @@ python migrate.py --test-connections
 
 **Solutions:**
 
-1. **Check Work Item States**
+1. **Check if Work Item Migration is Disabled (Common for Jira Users)**
+   ```bash
+   # If you're using Jira, this is expected and correct
+   grep "migrate_work_items.*false" config.json
+   # This means no GitHub issues will be created (which is what you want with Jira)
+   ```
+
+2. **Check Work Item States**
    ```json
    {
      "migration": {

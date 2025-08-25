@@ -4,8 +4,9 @@ A comprehensive Python tool for migrating repositories, work items, and other ar
 
 ## Features
 
-- **Repository Migration**: Clone and migrate Git repositories from Azure DevOps to GitHub
-- **Work Items to Issues**: Convert Azure DevOps work items to GitHub issues with proper formatting
+- **Repository Migration**: Clone and migrate Git repositories from Azure DevOps to GitHub with complete history
+- **Pipeline Conversion**: Convert Azure DevOps pipelines to GitHub Actions workflows
+- **Work Items to Issues** (Optional): Convert Azure DevOps work items to GitHub issues - skip if using Jira/other issue tracking
 - **Batch Processing**: Migrate multiple repositories using a migration plan
 - **Organization Analysis**: Analyze Azure DevOps organizations to plan migrations
 - **Comprehensive Logging**: Detailed logs and migration reports
@@ -35,7 +36,11 @@ A comprehensive Python tool for migrating repositories, work items, and other ar
 
 4. **Migrate a Single Repository**
    ```bash
+   # Full migration (if you want work items as GitHub issues)
    python migrate.py --project "MyProject" --repo "my-repo"
+   
+   # Repository + Pipelines only (recommended for Jira users)
+   python migrate.py --project "MyProject" --repo "my-repo" --no-issues
    ```
 
 5. **Batch Migration**
@@ -128,11 +133,17 @@ Contains helper functions for:
 
 ### What Gets Migrated
 
-✅ **Repository Structure**
-- Git history and branches
+✅ **Repository Structure** (Always)
+- Complete Git history with all commits
+- All branches and tags
 - Repository metadata (name, description)
 
-✅ **Work Items → Issues**
+✅ **Azure DevOps Pipelines** (Always)
+- Converted to GitHub Actions workflows
+- Basic pipeline structure and steps
+- Build and deployment configurations
+
+✅ **Work Items → Issues** (Optional - Skip if using Jira)
 - Title and description (HTML → Markdown)
 - Work item type → Labels
 - State information
@@ -140,10 +151,7 @@ Contains helper functions for:
 - Acceptance criteria (if present)
 - Reproduction steps (for bugs)
 
-✅ **Metadata**
-- Creation dates
-- Assigned users (as mentions)
-- Area paths → Labels
+> **Note for Jira Users:** Use `--no-issues` flag to skip work item migration since you're managing issues in Jira.
 
 ### What Doesn't Get Migrated
 

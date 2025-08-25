@@ -16,12 +16,13 @@
       "source-repo-1": "target-repo-1",
       "source-repo-2": "target-repo-2"
     },
-    "migrate_work_items": true,
+    "_comment": "Set migrate_work_items to true only if you want Azure DevOps work items as GitHub issues (skip if using Jira)",
+    "migrate_work_items": false,
     "migrate_pull_requests": false,
     "batch_size": 100,
     "delay_between_requests": 0.5,
     "max_retries": 3,
-    "include_closed_work_items": true
+    "include_closed_work_items": false
   },
   "work_item_mapping": {
     "type_mappings": {
