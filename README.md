@@ -6,7 +6,10 @@ A comprehensive Python tool for migrating repositories, work items, and other ar
 
 - **Repository Migration**: Clone and migrate Git repositories from Azure DevOps to GitHub with complete history
 - **Pipeline Conversion**: Convert Azure DevOps pipelines to GitHub Actions workflows
+- **Pipeline Scope Control**: Limit pipeline conversion to only those bound to the repository (`--pipelines-scope repository`) or include all project pipelines (default)
+- **Exclude Disabled Pipelines**: Skip disabled/paused pipelines with `--exclude-disabled-pipelines`
 - **Work Items to Issues** (Optional): Convert Azure DevOps work items to GitHub issues - skip if using Jira/other issue tracking
+- **Optional Remote Verification**: Post-push branch comparison with `--verify-remote` to ensure remote & local branches match
 - **Batch Processing**: Migrate multiple repositories using a migration plan
 - **Organization Analysis**: Analyze Azure DevOps organizations to plan migrations
 - **Comprehensive Logging**: Detailed logs and migration reports
@@ -96,6 +99,12 @@ python src/migrate.py --project "MyProject" --repo "my-repo" --dry-run --config 
 # 4. Actual migration (Jira users - most common)
 python src/migrate.py --project "MyProject" --repo "my-repo" --no-issues --config config.json
 
+# Repository-only pipelines (instead of all project pipelines)
+python src/migrate.py --project "MyProject" --repo "my-repo" --pipelines-scope repository --config config.json
+
+# Exclude disabled pipelines & verify remote branches post-push
+python src/migrate.py --project "MyProject" --repo "my-repo" --exclude-disabled-pipelines --verify-remote --config config.json
+
 # 5. Batch migration
 python src/batch_migrate.py --plan examples/sample-migration-plan.json --config config.json
 ```
@@ -137,6 +146,9 @@ python migrate.py --project "MyProject" --repo "my-repo" --github-repo "new-name
 
 # Skip work item migration
 python migrate.py --project "MyProject" --repo "my-repo" --no-issues
+
+# Limit pipelines to the repository & exclude disabled, with remote verification
+python migrate.py --project "MyProject" --repo "my-repo" --pipelines-scope repository --exclude-disabled-pipelines --verify-remote
 ```
 
 ### `analyze.py` - Organization Analyzer
@@ -194,6 +206,7 @@ Contains helper functions for:
 - Converted to GitHub Actions workflows
 - Basic pipeline structure and steps
 - Build and deployment configurations
+ - Repository-level filtering and disabled pipeline exclusion available
 
 ✅ **Work Items → Issues** (Optional - Skip if using Jira)
 - Title and description (HTML → Markdown)
@@ -387,6 +400,23 @@ python batch_migrate.py --plan your_plan.json
 - JSON reports with complete migration data
 - Statistics and success/failure tracking
 - Timestamp-based file naming
+ - When `--verify-remote` is used, logs include remote vs local branch comparison (missing/extra branches)
+
+## Key CLI Flags (Quick Reference)
+
+| Flag | Purpose | Default |
+|------|---------|---------|
+| `--dry-run` | Simulate migration without side effects | off |
+| `--no-issues` | Skip work item → issue conversion | off |
+| `--no-pipelines` | Skip pipeline conversion | off |
+| `--pipelines-scope {project|repository}` | Control pipeline selection scope | project |
+| `--exclude-disabled-pipelines` | Omit disabled/paused pipelines | off |
+| `--no-git` | Skip Git history migration | off |
+| `--verify-remote` | Compare remote branch list to local after push | off |
+| `--debug` | Verbose logging | off |
+| `--validate-only` | Validate config & credentials only | off |
+
+Combine for precision, e.g.: `--pipelines-scope repository --exclude-disabled-pipelines --verify-remote --no-issues`.
 
 ## Troubleshooting
 
