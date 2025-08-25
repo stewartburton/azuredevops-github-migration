@@ -1155,6 +1155,11 @@ class MigrationOrchestrator:
         end_time = datetime.now()
         duration = end_time - start_time
         
+        # Include remote verification if performed
+        remote_verification = None
+        if hasattr(self, 'git_migrator') and getattr(self.git_migrator, 'last_remote_verification', None):
+            remote_verification = self.git_migrator.last_remote_verification
+
         report = {
             'migration_metadata': {
                 'tool_version': '2.0.0',
@@ -1184,6 +1189,7 @@ class MigrationOrchestrator:
                 'git_history_migrated': not dry_run,
                 'pipelines_converted': len(azure_data.get('pipelines', [])) > 0
             },
+            'verification': remote_verification,
             'detailed_data': azure_data if self.config.get('output', {}).get('save_raw_data', False) else None
         }
         
