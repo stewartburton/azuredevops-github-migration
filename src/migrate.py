@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import urlparse, quote_plus as quote
+from urllib.parse import urlparse, quote
 import requests
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
@@ -110,7 +110,8 @@ class AzureDevOpsClient:
     
     def get_repositories(self, project_name: str) -> List[Dict[str, Any]]:
         """Get all repositories in a project."""
-        url = f"{self.base_url}/{quote(project_name)}/_apis/git/repositories?api-version=7.0"
+        # Use percent-encoding for path segment (quote_plus would use '+', which Azure DevOps rejects for project names)
+        url = f"{self.base_url}/{quote(project_name, safe='')}/_apis/git/repositories?api-version=7.0"
         try:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
@@ -123,20 +124,19 @@ class AzureDevOpsClient:
     
     def get_repository_size(self, project_name: str, repo_id: str) -> int:
         """Get repository size in bytes."""
-        url = f"{self.base_url}/{quote(project_name)}/_apis/git/repositories/{repo_id}/stats/branches?api-version=7.0"
+        url = f"{self.base_url}/{quote(project_name, safe='')}/_apis/git/repositories/{repo_id}/stats/branches?api-version=7.0"
         try:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
             stats = response.json().get('value', [])
-            # Calculate approximate size based on commit count
             total_commits = sum(branch.get('aheadCount', 0) + branch.get('behindCount', 0) for branch in stats)
             return total_commits * 1024  # Rough estimate
-        except:
-            return 0  # Return 0 if can't determine size
+        except Exception:
+            return 0
     
     def get_repository_branches(self, project_name: str, repo_id: str) -> List[Dict[str, Any]]:
         """Get all branches in a repository."""
-        url = f"{self.base_url}/{quote(project_name)}/_apis/git/repositories/{repo_id}/refs?filter=heads&api-version=7.0"
+        url = f"{self.base_url}/{quote(project_name, safe='')}/_apis/git/repositories/{repo_id}/refs?filter=heads&api-version=7.0"
         try:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
@@ -147,7 +147,7 @@ class AzureDevOpsClient:
     
     def get_pipelines(self, project_name: str) -> List[Dict[str, Any]]:
         """Get all build pipelines in a project."""
-        url = f"{self.base_url}/{quote(project_name)}/_apis/build/definitions?api-version=7.0"
+        url = f"{self.base_url}/{quote(project_name, safe='')}/_apis/build/definitions?api-version=7.0"
         try:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
@@ -162,22 +162,17 @@ class AzureDevOpsClient:
         """Get work items using WIQL query."""
         if not wiql_query:
             wiql_query = f"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '{project_name}'"
-        
-        url = f"{self.base_url}/{project_name}/_apis/wit/wiql?api-version=7.0"
+        url = f"{self.base_url}/{quote(project_name, safe='')}/_apis/wit/wiql?api-version=7.0"
         response = self.session.post(url, json={'query': wiql_query})
         response.raise_for_status()
-        
+
         work_item_ids = [item['id'] for item in response.json().get('workItems', [])]
-        
         if not work_item_ids:
             return []
-        
-        # Get detailed work item information
         ids_str = ','.join(map(str, work_item_ids))
         detail_url = f"{self.base_url}/_apis/wit/workitems?ids={ids_str}&api-version=7.0&$expand=all"
         detail_response = self.session.get(detail_url)
         detail_response.raise_for_status()
-        
         return detail_response.json().get('value', [])
     
     def get_pull_requests(self, project_name: str, repository_id: str) -> List[Dict[str, Any]]:
@@ -187,8 +182,11 @@ class AzureDevOpsClient:
         response.raise_for_status()
         return response.json().get('value', [])
     
-    def export_repository_data(self, project_name: str, repo_name: str) -> Dict[str, Any]:
-        """Export comprehensive repository data with enhanced metadata."""
+    def export_repository_data(self, project_name: str, repo_name: str, include_work_items: bool = True) -> Dict[str, Any]:
+        """Export comprehensive repository data with enhanced metadata.
+
+        include_work_items: if False, skips WIQL/work item calls (useful with --no-issues)
+        """
         self.logger.info(f"Exporting data for repository '{repo_name}' in project '{project_name}'")
         
         repos = self.get_repositories(project_name)
@@ -200,12 +198,20 @@ class AzureDevOpsClient:
         self.logger.debug("Gathering repository metadata...")
         
         # Get enhanced repository data
+        work_items: List[Dict[str, Any]] = []
+        if include_work_items:
+            try:
+                work_items = self.get_work_items(project_name)
+            except Exception as e:
+                self.logger.warning(f"Skipping work item retrieval due to error: {e}")
+                work_items = []
+
         repo_data = {
             'repository': repo,
             'size': self.get_repository_size(project_name, repo['id']),
             'branches': self.get_repository_branches(project_name, repo['id']),
             'pull_requests': self.get_pull_requests(project_name, repo['id']),
-            'work_items': self.get_work_items(project_name),
+            'work_items': work_items,
             'pipelines': self.get_pipelines(project_name)
         }
         
@@ -274,7 +280,6 @@ class GitHubClient:
         # Validate repository name
         if not self._validate_repo_name(name):
             raise ValueError(f"Invalid repository name: '{name}'. Must follow GitHub naming rules.")
-        
         data = {
             'name': name,
             'description': description,
@@ -284,20 +289,30 @@ class GitHubClient:
             'has_wiki': kwargs.get('has_wiki', True),
             'auto_init': kwargs.get('auto_init', False)
         }
-        
-        # Add optional settings
+
         if kwargs.get('gitignore_template'):
             data['gitignore_template'] = kwargs['gitignore_template']
         if kwargs.get('license_template'):
             data['license_template'] = kwargs['license_template']
-        
+
         if self.organization:
             url = f"{self.base_url}/orgs/{self.organization}/repos"
         else:
             url = f"{self.base_url}/user/repos"
-        
+
         try:
             response = self.session.post(url, json=data, timeout=30)
+            if response.status_code == 403:
+                # If repo already exists, reuse
+                if self.repository_exists(name):
+                    existing = self.get_repository(name)
+                    if existing:
+                        self.logger.warning(f"[WARN] 403 Forbidden on create, but repository '{name}' exists. Reusing existing repository.")
+                        return existing
+                raise MigrationError(
+                    "GitHub 403 Forbidden creating repository. Causes: insufficient PAT scopes ('repo'), "
+                    "missing org create permission, SAML SSO not authorized, or org policy blocking creation."
+                )
             response.raise_for_status()
             repo = response.json()
             self.logger.info(f"Created GitHub repository: {repo['html_url']}")
@@ -308,6 +323,8 @@ class GitHubClient:
                 if 'already exists' in error_msg.lower():
                     raise MigrationError(f"Repository '{name}' already exists")
                 raise MigrationError(f"Repository creation failed: {error_msg}")
+            if e.response.status_code == 403:
+                raise MigrationError("Forbidden: insufficient permissions or SSO authorization required for repository creation") from e
             raise
     
     def _validate_repo_name(self, name: str) -> bool:
@@ -410,6 +427,14 @@ class GitMigrator:
             clone_url = repo.get('remoteUrl', '')
             if not clone_url:
                 raise GitOperationError(f"No clone URL found for repository '{repo_name}'")
+
+            # Sanitize clone URL (remove embedded username like ORG@dev.azure.com)
+            parsed_clone = urlparse(clone_url)
+            netloc = parsed_clone.netloc
+            if '@' in netloc:
+                # Keep host part after last '@'
+                host = netloc.split('@')[-1]
+                clone_url = f"{parsed_clone.scheme}://{host}{parsed_clone.path}"
             
             self.logger.info(f"Starting Git migration: {clone_url} -> GitHub:{github_repo_name}")
             
@@ -479,14 +504,15 @@ class GitMigrator:
             return url
             
         parsed = urlparse(url)
+        # Strip existing userinfo if present
+        host = parsed.netloc.split('@')[-1]
         if username and password:
             auth = f"{quote(username)}:{quote(password)}"
         elif password:  # PAT case
             auth = f":{quote(password)}"
         else:
             return url
-            
-        return f"{parsed.scheme}://{auth}@{parsed.netloc}{parsed.path}"
+        return f"{parsed.scheme}://{auth}@{host}{parsed.path}"
     
     def _verify_migration(self, local_repo_path: str, github_url: str):
         """Verify that the migration was successful."""
@@ -641,6 +667,8 @@ class MigrationOrchestrator:
     def load_config(self, config_file: str) -> Dict[str, Any]:
         """Load configuration from YAML or JSON file with environment variable substitution."""
         try:
+            # Load .env file early so environment variables are available for substitution
+            self._load_env_file()
             with open(config_file, 'r') as f:
                 if config_file.endswith('.json'):
                     config = json.load(f)
@@ -649,6 +677,16 @@ class MigrationOrchestrator:
             
             # Substitute environment variables
             config = self._substitute_env_vars(config)
+
+            # Detect obvious template placeholders left unchanged
+            missing = self._detect_unresolved(config)
+            if missing:
+                raise ValueError("Unresolved configuration placeholders: " + ", ".join(sorted(missing)))
+
+            # Warn if common template defaults still present
+            az_org = config.get('azure_devops', {}).get('organization', '')
+            if az_org in ('your-organization-name', 'ORG_NAME_PLACEHOLDER'):
+                raise ValueError("Azure DevOps organization not set. Update 'azure_devops.organization' in config.json or provide AZURE_DEVOPS_ORGANIZATION in .env and reference it as ${AZURE_DEVOPS_ORGANIZATION}.")
             
             # Validate required configuration
             self._validate_config(config)
@@ -675,6 +713,40 @@ class MigrationOrchestrator:
             return value
         else:
             return obj
+
+    def _detect_unresolved(self, obj) -> set:
+        """Return a set of unresolved placeholder markers still in config."""
+        unresolved = set()
+        if isinstance(obj, dict):
+            for v in obj.values():
+                unresolved.update(self._detect_unresolved(v))
+        elif isinstance(obj, list):
+            for v in obj:
+                unresolved.update(self._detect_unresolved(v))
+        elif isinstance(obj, str) and obj.startswith('[PLACEHOLDER_') and obj.endswith(']'):
+            unresolved.add(obj[12:-1])  # Extract VAR name
+        return unresolved
+
+    def _load_env_file(self, filename: str = '.env'):
+        """Lightweight .env loader (avoids extra dependency)."""
+        try:
+            if not os.path.exists(filename):
+                return
+            with open(filename, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    if '=' not in line:
+                        continue
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    if key and key not in os.environ:
+                        os.environ[key] = value
+        except Exception as e:
+            # Don't fail hard on env file issues; just log if logger available later
+            print(f"[WARN] Failed to load .env file: {e}")
     
     def _validate_config(self, config: Dict[str, Any]):
         """Validate configuration has all required fields."""
@@ -760,7 +832,7 @@ class MigrationOrchestrator:
             
             # Step 2: Export data from Azure DevOps
             self._update_migration_state("Exporting Azure DevOps data")
-            azure_data = self.azure_client.export_repository_data(project_name, repo_name)
+            azure_data = self.azure_client.export_repository_data(project_name, repo_name, include_work_items=migrate_issues)
             
             # Step 3: Create/validate GitHub repository
             self._update_migration_state("Setting up GitHub repository")
