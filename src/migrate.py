@@ -451,9 +451,14 @@ class GitMigrator:
         self.logger = logger
         self.temp_dirs = []  # Track temporary directories for cleanup
     
-    def migrate_repository_git_history(self, project_name: str, repo_name: str, 
-                                     github_repo_name: str, dry_run: bool = False) -> bool:
-        """Migrate complete Git history from Azure DevOps to GitHub."""
+    def migrate_repository_git_history(self, project_name: str, repo_name: str,
+                                       github_repo_name: str, dry_run: bool = False,
+                                       verify_remote: bool = False) -> bool:
+        """Migrate complete Git history from Azure DevOps to GitHub.
+
+        verify_remote: if True, after push perform remote branch enumeration and compare to local.
+        Results stored in self.last_remote_verification.
+        """
         temp_dir = None
         try:
             # Get Azure DevOps repository info
@@ -513,7 +518,7 @@ class GitMigrator:
             self.logger.info("[OK] Repository pushed to GitHub successfully")
             
             # Verify migration
-            self._verify_migration(temp_dir, authenticated_github_url)
+            self._verify_migration(temp_dir, authenticated_github_url if verify_remote else None, verify_remote)
             
             return True
             
@@ -544,19 +549,21 @@ class GitMigrator:
             return url
         return f"{parsed.scheme}://{auth}@{host}{parsed.path}"
     
-    def _verify_migration(self, local_repo_path: str, github_url: str):
-        """Verify that the migration was successful."""
+    def _verify_migration(self, local_repo_path: str, github_url: Optional[str], verify_remote: bool):
+        """Verify local migration and optionally compare remote branches."""
+        self.last_remote_verification = {}
         try:
-            # Get local branch count
-            local_result = subprocess.run(
-                ['git', 'branch', '-a'], 
-                cwd=local_repo_path, 
-                capture_output=True, 
+            # Local branches
+            local_branches_cmd = subprocess.run(
+                ['git', 'for-each-ref', 'refs/heads', '--format=%(refname:short)'],
+                cwd=local_repo_path,
+                capture_output=True,
                 text=True
             )
-            local_branches = len([line for line in local_result.stdout.split('\n') if line.strip()])
-            
-            # Get commit count
+            local_branches_list = [b.strip() for b in local_branches_cmd.stdout.split('\n') if b.strip()]
+            local_branches = len(local_branches_list)
+
+            # Commit count
             commit_result = subprocess.run(
                 ['git', 'rev-list', '--all', '--count'],
                 cwd=local_repo_path,
@@ -564,11 +571,62 @@ class GitMigrator:
                 text=True
             )
             commit_count = int(commit_result.stdout.strip()) if commit_result.stdout.strip().isdigit() else 0
-            
-            self.logger.info(f"Migration verified: {local_branches} branches, {commit_count} commits")
-            
+
+            msg = f"Migration verified (local): {local_branches} branches, {commit_count} commits"
+            self.logger.info(msg)
+
+            remote_details = None
+            if verify_remote and github_url:
+                # Sanitize URL for logging (remove credentials)
+                display_url = github_url
+                if '://' in display_url and '@' in display_url.split('://', 1)[1].split('/', 1)[0]:
+                    # Remove userinfo
+                    scheme, rest = display_url.split('://', 1)
+                    host_part = rest.split('@', 1)[1]
+                    display_url = f"{scheme}://{host_part}"
+                try:
+                    remote_heads = subprocess.run(
+                        ['git', 'ls-remote', '--heads', github_url],
+                        cwd=local_repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=120
+                    )
+                    if remote_heads.returncode != 0:
+                        raise RuntimeError(remote_heads.stderr)
+                    remote_branch_lines = [ln for ln in remote_heads.stdout.split('\n') if ln.strip()]
+                    remote_branches_list = [ln.split('\t')[1].replace('refs/heads/', '') for ln in remote_branch_lines if '\trefs/heads/' in ln]
+                    remote_branches = len(remote_branches_list)
+                    missing_remote = sorted(set(local_branches_list) - set(remote_branches_list))
+                    missing_local = sorted(set(remote_branches_list) - set(local_branches_list))
+                    branch_match = not missing_remote and not missing_local and (local_branches == remote_branches)
+                    self.logger.info(
+                        f"Remote verification against {display_url}: {remote_branches} remote branches; match={branch_match}"
+                    )
+                    if missing_remote:
+                        self.logger.warning(f"Branches missing on remote: {missing_remote}")
+                    if missing_local:
+                        self.logger.warning(f"Extra branches on remote: {missing_local}")
+                    remote_details = {
+                        'remote_branches': remote_branches,
+                        'remote_branch_names': remote_branches_list,
+                        'branch_match': branch_match,
+                        'missing_remote': missing_remote,
+                        'missing_local': missing_local
+                    }
+                except Exception as re:
+                    self.logger.warning(f"Remote branch verification failed: {re}")
+                    remote_details = {'error': str(re)}
+
+            self.last_remote_verification = {
+                'local_branches': local_branches,
+                'local_branch_names': local_branches_list,
+                'commit_count': commit_count,
+                'remote': remote_details
+            }
         except Exception as e:
-            self.logger.warning(f"Could not verify migration completeness: {str(e)}")
+            self.logger.warning(f"Verification step failed: {e}")
+            self.last_remote_verification = {'error': str(e)}
     
     def cleanup(self):
         """Clean up any temporary directories."""
@@ -1007,8 +1065,11 @@ class MigrationOrchestrator:
     def _migrate_git_repository(self, project_name: str, repo_name: str, github_repo_name: str, dry_run: bool) -> bool:
         """Migrate Git history from Azure DevOps to GitHub."""
         try:
+            verify_remote = False
+            if hasattr(self, 'args'):
+                verify_remote = getattr(self.args, 'verify_remote', False)
             return self.git_migrator.migrate_repository_git_history(
-                project_name, repo_name, github_repo_name, dry_run
+                project_name, repo_name, github_repo_name, dry_run, verify_remote=verify_remote
             )
         except Exception as e:
             self.logger.error(f"Git repository migration failed: {str(e)}")
@@ -1258,6 +1319,8 @@ def main():
                        help='Scope of pipelines to migrate: project (all project pipelines) or repository (only those bound to the repo)')
     parser.add_argument('--exclude-disabled-pipelines', action='store_true',
                        help='Exclude pipelines whose queueStatus is disabled/paused')
+    parser.add_argument('--verify-remote', action='store_true',
+                       help='After pushing git history, verify remote branches match local')
     
     # Validation options
     parser.add_argument('--validate-only', action='store_true',
