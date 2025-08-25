@@ -13,40 +13,92 @@ A comprehensive Python tool for migrating repositories, work items, and other ar
 - **Rate Limiting**: Built-in rate limiting to respect API limits
 - **Retry Logic**: Automatic retry on transient failures
 
-## Quick Start
+## 📁 Project Structure
 
-1. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+```
+azuredevops-github-migration/
+├── README.md                    # Project overview (you are here)
+├── requirements.txt             # Python dependencies  
+├── setup.py                     # Package installation
+│
+├── src/                        # 🐍 Source Code
+│   ├── migrate.py              # Main migration tool
+│   ├── analyze.py              # Organization analysis  
+│   ├── batch_migrate.py        # Batch operations
+│   └── utils.py                # Shared utilities
+│
+├── config/                     # ⚙️ Configuration Templates
+│   └── config.template.json    # Main configuration template
+│
+├── examples/                   # 📋 Ready-to-Use Examples
+│   ├── jira-users-config.json  # For Jira users (most common)
+│   ├── full-migration-config.json  # Complete migration
+│   └── sample-migration-plan.json  # Batch migration plan
+│
+├── scripts/                    # 🔧 Setup & Utilities  
+│   └── setup.sh               # Automated installation
+│
+├── tests/                      # 🧪 Test Suite
+│   ├── test_migrate_basic.py   # Essential tests
+│   └── test_migrate.py         # Comprehensive tests
+│
+└── docs/                       # 📚 Documentation
+    ├── user-guide/             # User Documentation
+    │   ├── HOW_TO_GUIDE.md     # Step-by-step instructions
+    │   ├── PRE_MIGRATION_CHECKLIST.md  # 100+ item checklist
+    │   └── TESTING.md          # Testing procedures
+    └── technical/              # Technical Documentation  
+        ├── api.md              # API reference
+        ├── configuration.md    # Configuration guide
+        └── troubleshooting.md  # Problem resolution
+```
 
-2. **Set Up Configuration**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your tokens
-   
-   cp migration_config.yaml.example migration_config.yaml
-   # Edit migration_config.yaml with your settings
-   ```
+## 🚀 Quick Start
 
-3. **Analyze Your Organization** (Optional but recommended)
-   ```bash
-   python analyze.py --create-plan
-   ```
+### Option 1: Automated Setup (Recommended)
+```bash
+# Clone the repository
+git clone https://github.com/stewartburton/azuredevops-github-migration.git
+cd azuredevops-github-migration
 
-4. **Migrate a Single Repository**
-   ```bash
-   # Full migration (if you want work items as GitHub issues)
-   python migrate.py --project "MyProject" --repo "my-repo"
-   
-   # Repository + Pipelines only (recommended for Jira users)
-   python migrate.py --project "MyProject" --repo "my-repo" --no-issues
-   ```
+# Run automated setup
+chmod +x scripts/setup.sh
+./scripts/setup.sh
+```
 
-5. **Batch Migration**
-   ```bash
-   python batch_migrate.py --plan migration_plan.json
-   ```
+### Option 2: Manual Setup
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Choose your configuration template
+cp examples/jira-users-config.json config.json          # For Jira users
+# OR
+cp config/config.template.json config.json              # Custom configuration
+
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your tokens: AZURE_DEVOPS_PAT and GITHUB_TOKEN
+```
+
+### Basic Migration Commands
+
+```bash
+# 1. Validate your setup
+python src/migrate.py --validate-only --config config.json
+
+# 2. Analyze your organization (optional)
+python src/analyze.py --create-plan --config config.json
+
+# 3. Test migration (safe, no changes)
+python src/migrate.py --project "MyProject" --repo "my-repo" --dry-run --config config.json
+
+# 4. Actual migration (Jira users - most common)
+python src/migrate.py --project "MyProject" --repo "my-repo" --no-issues --config config.json
+
+# 5. Batch migration
+python src/batch_migrate.py --plan examples/sample-migration-plan.json --config config.json
+```
 
 ## Configuration
 
@@ -165,6 +217,23 @@ Contains helper functions for:
 - Test plans and cases
 - Boards configuration
 - Extensions and customizations
+
+## 📚 Documentation Quick Links
+
+### 👥 **For End Users**
+- **[📖 How-To Guide](docs/user-guide/HOW_TO_GUIDE.md)** - Complete step-by-step migration instructions
+- **[✅ Pre-Migration Checklist](docs/user-guide/PRE_MIGRATION_CHECKLIST.md)** - 100+ validation items before migration  
+- **[🧪 Testing Guide](docs/user-guide/TESTING.md)** - Comprehensive testing procedures
+
+### 🔧 **For Technical Teams**
+- **[⚙️ Configuration Reference](docs/technical/configuration.md)** - Complete configuration options
+- **[🔍 Troubleshooting Guide](docs/technical/troubleshooting.md)** - Problem resolution and debugging
+- **[🔌 API Documentation](docs/technical/api.md)** - Technical API reference
+
+### 📋 **Ready-to-Use Examples**
+- **[examples/jira-users-config.json](examples/jira-users-config.json)** - Optimized for Jira users (most common)
+- **[examples/full-migration-config.json](examples/full-migration-config.json)** - Complete migration with work items
+- **[examples/sample-migration-plan.json](examples/sample-migration-plan.json)** - Batch migration template
 
 ## Authentication
 

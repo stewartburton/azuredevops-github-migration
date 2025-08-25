@@ -13,7 +13,7 @@ import requests
 
 # Import main classes - handle import errors gracefully
 try:
-    from migrate import (
+    from src.migrate import (
         AzureDevOpsClient, GitHubClient, MigrationOrchestrator,
         AuthenticationError, MigrationError
     )
@@ -166,17 +166,17 @@ class TestFileStructure(unittest.TestCase):
     
     def test_main_script_exists(self):
         """Test that migrate.py exists."""
-        self.assertTrue(os.path.exists('migrate.py'), "migrate.py should exist")
+        self.assertTrue(os.path.exists('src/migrate.py'), "src/migrate.py should exist")
     
     def test_config_template_exists(self):
         """Test that config template exists and is valid JSON."""
-        self.assertTrue(os.path.exists('config.template.json'), "config.template.json should exist")
+        self.assertTrue(os.path.exists('config/config.template.json'), "config/config.template.json should exist")
         
-        with open('config.template.json', 'r') as f:
+        with open('config/config.template.json', 'r') as f:
             try:
                 json.load(f)
             except json.JSONDecodeError as e:
-                self.fail(f"config.template.json is not valid JSON: {e}")
+                self.fail(f"config/config.template.json is not valid JSON: {e}")
     
     def test_requirements_exists(self):
         """Test that requirements.txt exists."""
@@ -190,7 +190,7 @@ class TestFileStructure(unittest.TestCase):
     
     def test_documentation_exists(self):
         """Test that key documentation files exist."""
-        docs = ['README.md', 'HOW_TO_GUIDE.md', 'TESTING.md', 'PRE_MIGRATION_CHECKLIST.md']
+        docs = ['README.md', 'docs/user-guide/HOW_TO_GUIDE.md', 'docs/user-guide/TESTING.md', 'docs/user-guide/PRE_MIGRATION_CHECKLIST.md']
         for doc in docs:
             self.assertTrue(os.path.exists(doc), f"{doc} should exist")
 
@@ -202,13 +202,13 @@ class TestScriptSyntax(unittest.TestCase):
         """Test that migrate.py has valid Python syntax."""
         try:
             import py_compile
-            py_compile.compile('migrate.py', doraise=True)
+            py_compile.compile('src/migrate.py', doraise=True)
         except py_compile.PyCompileError as e:
-            self.fail(f"migrate.py has syntax errors: {e}")
+            self.fail(f"src/migrate.py has syntax errors: {e}")
     
     def test_utility_scripts_syntax(self):
         """Test that utility scripts have valid syntax."""
-        scripts = ['analyze.py', 'batch_migrate.py', 'utils.py']
+        scripts = ['src/analyze.py', 'src/batch_migrate.py', 'src/utils.py']
         for script in scripts:
             if os.path.exists(script):
                 try:

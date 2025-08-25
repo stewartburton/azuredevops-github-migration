@@ -7,7 +7,10 @@ import json
 import csv
 from typing import Dict, List, Any
 from datetime import datetime
-from migrate import AzureDevOpsClient
+try:
+    from .migrate import AzureDevOpsClient
+except ImportError:
+    from migrate import AzureDevOpsClient
 import yaml
 
 

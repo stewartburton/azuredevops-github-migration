@@ -34,8 +34,8 @@ git clone <repository-url>
 cd azuredevops-github-migration
 
 # Run the setup script
-chmod +x setup.sh
-./setup.sh
+chmod +x scripts/setup.sh
+./scripts/setup.sh
 ```
 
 The setup script will:
@@ -56,7 +56,7 @@ source venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 
 # Copy configuration templates
-cp config.template.json config.json
+cp config/config.template.json config.json
 cp .env.example .env
 ```
 
@@ -122,13 +122,13 @@ Before migrating, analyze what you have:
 
 ```bash
 # Analyze entire organization
-python analyze.py
+python src/analyze.py
 
 # Analyze specific project
-python analyze.py --project "MyProject"
+python src/analyze.py --project "MyProject"
 
 # Generate migration plan
-python analyze.py --create-plan
+python src/analyze.py --create-plan
 ```
 
 This creates:
@@ -163,23 +163,23 @@ Example migration plan:
 
 ```bash
 # Typical migration for Jira users (repository + pipelines only)
-python migrate.py --project "MyProject" --repo "my-repo" --no-issues
+python src/migrate.py --project "MyProject" --repo "my-repo" --no-issues
 
 # With custom GitHub repository name
-python migrate.py --project "MyProject" --repo "my-repo" --github-repo "new-repo-name" --no-issues
+python src/migrate.py --project "MyProject" --repo "my-repo" --github-repo "new-repo-name" --no-issues
 
 # Full migration including work items (if not using Jira)
-python migrate.py --project "MyProject" --repo "my-repo"
+python src/migrate.py --project "MyProject" --repo "my-repo"
 ```
 
 ### Batch Migration
 
 ```bash
 # Test with dry run first
-python batch_migrate.py --dry-run --plan migration_plan.json
+python src/batch_migrate.py --dry-run --plan migration_plan.json
 
 # Execute the migration
-python batch_migrate.py --plan migration_plan.json
+python src/batch_migrate.py --plan migration_plan.json
 ```
 
 ### Monitor Progress
@@ -240,7 +240,7 @@ If you're using Jira for issue tracking and only need to migrate Git repositorie
 
 ```bash
 # Single repository migration (no work items)
-python migrate.py --project "MyProject" --repo "my-app" --no-issues
+python src/migrate.py --project "MyProject" --repo "my-app" --no-issues
 
 # Custom migration plan for Jira users
 cat > jira_user_plan.json << 'EOF'
@@ -260,7 +260,7 @@ cat > jira_user_plan.json << 'EOF'
 ]
 EOF
 
-python batch_migrate.py --plan jira_user_plan.json
+python src/batch_migrate.py --plan jira_user_plan.json
 ```
 
 **What you get:**
@@ -273,12 +273,12 @@ python batch_migrate.py --plan jira_user_plan.json
 
 ```bash
 # 1. Start with analysis
-python analyze.py --create-plan
+python src/analyze.py --create-plan
 
 # 2. Edit the generated plan to prioritize critical repositories
 # 3. Run migration in batches
-python batch_migrate.py --plan high_priority_repos.json
-python batch_migrate.py --plan medium_priority_repos.json
+python src/batch_migrate.py --plan high_priority_repos.json
+python src/batch_migrate.py --plan medium_priority_repos.json
 ```
 
 ### Scenario 2: Selective Repository Migration
@@ -302,7 +302,7 @@ cat > custom_plan.json << 'EOF'
 ]
 EOF
 
-python batch_migrate.py --plan custom_plan.json
+python src/batch_migrate.py --plan custom_plan.json
 ```
 
 ### Scenario 3: Work Items Only Migration
@@ -390,17 +390,17 @@ Exclude specific repositories or work items:
 
 ```bash
 # Test connection to Azure DevOps
-python -c "from migrate import AzureDevOpsClient; client = AzureDevOpsClient('org', 'token'); print(len(client.get_projects()))"
+python -c "from src.migrate import AzureDevOpsClient; client = AzureDevOpsClient('org', 'token'); print(len(client.get_projects()))"
 
 # Test connection to GitHub
-python -c "from migrate import GitHubClient; client = GitHubClient('token'); print(client.get_user()['login'])"
+python -c "from src.migrate import GitHubClient; client = GitHubClient('token'); print(client.get_user()['login'])"
 ```
 
 ### Post-Migration Validation
 
 ```bash
 # Compare repository statistics
-python analyze.py --project "MyProject" > before_migration.txt
+python src/analyze.py --project "MyProject" > before_migration.txt
 # After migration, check GitHub repository for equivalent data
 ```
 
@@ -429,22 +429,22 @@ Here's a complete example workflow:
 
 ```bash
 # 1. Setup
-./setup.sh
+./scripts/setup.sh
 
 # 2. Configure
 # Edit config.json and .env files
 
 # 3. Analyze
-python analyze.py --create-plan
+python src/analyze.py --create-plan
 
 # 4. Plan
 # Edit the generated migration plan
 
 # 5. Test
-python batch_migrate.py --dry-run --plan migration_plan.json
+python src/batch_migrate.py --dry-run --plan migration_plan.json
 
 # 6. Execute
-python batch_migrate.py --plan migration_plan.json
+python src/batch_migrate.py --plan migration_plan.json
 
 # 7. Verify
 # Check GitHub repositories and issues

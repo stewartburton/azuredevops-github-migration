@@ -1,0 +1,64 @@
+{
+  "azure_devops": {
+    "organization": "your-organization-name",
+    "personal_access_token": "${AZURE_DEVOPS_PAT}",
+    "project": "your-project-name"
+  },
+  "github": {
+    "token": "${GITHUB_TOKEN}",
+    "organization": "your-github-org",
+    "create_private_repos": true
+  },
+  "migration": {
+    "_comment": "Full migration including work items to GitHub issues",
+    "migrate_work_items": true,
+    "migrate_pull_requests": false,
+    "batch_size": 50,
+    "delay_between_requests": 0.8,
+    "max_retries": 5,
+    "include_closed_work_items": true
+  },
+  "work_item_mapping": {
+    "type_mappings": {
+      "User Story": "enhancement",
+      "Bug": "bug",
+      "Task": "task",
+      "Feature": "feature",
+      "Epic": "epic",
+      "Issue": "question"
+    },
+    "state_mappings": {
+      "New": "open",
+      "Active": "open",
+      "Resolved": "closed",
+      "Closed": "closed",
+      "Done": "closed",
+      "Removed": "closed"
+    },
+    "priority_mappings": {
+      "1": "priority-critical",
+      "2": "priority-high", 
+      "3": "priority-medium",
+      "4": "priority-low"
+    }
+  },
+  "rate_limiting": {
+    "azure_devops_requests_per_second": 8,
+    "github_requests_per_second": 25,
+    "enable_backoff": true,
+    "backoff_factor": 2.0
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "migration.log",
+    "console": true
+  },
+  "output": {
+    "generate_reports": true,
+    "report_format": "json",
+    "output_directory": "./migration_reports",
+    "include_statistics": true,
+    "save_raw_data": false
+  }
+}

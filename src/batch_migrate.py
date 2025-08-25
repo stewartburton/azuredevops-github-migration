@@ -6,8 +6,12 @@ Batch migration script for migrating multiple repositories from Azure DevOps to 
 import json
 import logging
 from typing import Dict, List, Any
-from migrate import MigrationOrchestrator
-from utils import log_migration_summary
+try:
+    from .migrate import MigrationOrchestrator
+    from .utils import log_migration_summary
+except ImportError:
+    from migrate import MigrationOrchestrator
+    from utils import log_migration_summary
 
 
 def load_migration_plan(file_path: str) -> List[Dict[str, Any]]:

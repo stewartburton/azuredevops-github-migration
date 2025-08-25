@@ -1,0 +1,39 @@
+{
+  "azure_devops": {
+    "organization": "your-organization-name",
+    "personal_access_token": "${AZURE_DEVOPS_PAT}",
+    "project": "your-project-name"
+  },
+  "github": {
+    "token": "${GITHUB_TOKEN}",
+    "organization": "your-github-org",
+    "create_private_repos": true
+  },
+  "migration": {
+    "_comment": "Optimized for Jira users - only migrates Git repositories and pipelines",
+    "migrate_work_items": false,
+    "migrate_pull_requests": false,
+    "batch_size": 100,
+    "delay_between_requests": 0.5,
+    "max_retries": 3,
+    "include_closed_work_items": false
+  },
+  "rate_limiting": {
+    "azure_devops_requests_per_second": 10,
+    "github_requests_per_second": 30,
+    "enable_backoff": true,
+    "backoff_factor": 2.0
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "migration.log",
+    "console": true
+  },
+  "output": {
+    "generate_reports": true,
+    "report_format": "json",
+    "output_directory": "./migration_reports",
+    "include_statistics": true
+  }
+}

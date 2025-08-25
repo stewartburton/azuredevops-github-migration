@@ -1,0 +1,30 @@
+[
+  {
+    "project_name": "MyProject",
+    "repo_name": "frontend-app",
+    "github_repo_name": "frontend-app",
+    "migrate_issues": false,
+    "description": "React frontend application"
+  },
+  {
+    "project_name": "MyProject", 
+    "repo_name": "backend-api",
+    "github_repo_name": "backend-api",
+    "migrate_issues": false,
+    "description": ".NET Core REST API"
+  },
+  {
+    "project_name": "MyProject",
+    "repo_name": "shared-components",
+    "github_repo_name": "ui-component-library", 
+    "migrate_issues": false,
+    "description": "Shared UI component library"
+  },
+  {
+    "project_name": "Infrastructure",
+    "repo_name": "terraform-modules",
+    "github_repo_name": "infrastructure-modules",
+    "migrate_issues": false, 
+    "description": "Terraform infrastructure as code"
+  }
+]
