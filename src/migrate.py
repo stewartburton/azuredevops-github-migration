@@ -157,6 +157,30 @@ class AzureDevOpsClient:
         except requests.exceptions.RequestException as e:
             self.logger.warning(f"Could not get pipelines for project '{project_name}': {str(e)}")
             return []
+
+    def get_pipelines_for_repo(self, project_name: str, repo_id: str) -> List[Dict[str, Any]]:
+        """Get build pipelines that reference a specific repository.
+
+        Azure DevOps supports filtering build definitions by repositoryId and repositoryType.
+        Note: Classic pipelines may not always return with this filter if they do not bind repo metadata.
+        """
+        url = (
+            f"{self.base_url}/{quote(project_name, safe='')}/_apis/build/definitions"
+            f"?repositoryId={repo_id}&repositoryType=TfsGit&api-version=7.0"
+        )
+        try:
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
+            pipelines = response.json().get('value', [])
+            self.logger.debug(
+                f"Found {len(pipelines)} pipelines in project '{project_name}' scoped to repo {repo_id}"
+            )
+            return pipelines
+        except requests.exceptions.RequestException as e:
+            self.logger.warning(
+                f"Could not get repository-scoped pipelines for project '{project_name}', repo '{repo_id}': {str(e)}"
+            )
+            return []
     
     def get_work_items(self, project_name: str, wiql_query: str = None) -> List[Dict[str, Any]]:
         """Get work items using WIQL query."""
@@ -182,10 +206,13 @@ class AzureDevOpsClient:
         response.raise_for_status()
         return response.json().get('value', [])
     
-    def export_repository_data(self, project_name: str, repo_name: str, include_work_items: bool = True) -> Dict[str, Any]:
+    def export_repository_data(self, project_name: str, repo_name: str, include_work_items: bool = True,
+                               pipeline_scope: str = "project", exclude_disabled_pipelines: bool = False) -> Dict[str, Any]:
         """Export comprehensive repository data with enhanced metadata.
 
         include_work_items: if False, skips WIQL/work item calls (useful with --no-issues)
+        pipeline_scope: 'project' (default) returns all project pipelines; 'repository' filters to pipelines referencing this repo
+        exclude_disabled_pipelines: if True, filter out pipelines whose 'queueStatus' indicates disabled/paused
         """
         self.logger.info(f"Exporting data for repository '{repo_name}' in project '{project_name}'")
         
@@ -206,13 +233,24 @@ class AzureDevOpsClient:
                 self.logger.warning(f"Skipping work item retrieval due to error: {e}")
                 work_items = []
 
+        # Pipelines retrieval according to scope
+        if pipeline_scope == 'repository':
+            pipelines = self.get_pipelines_for_repo(project_name, repo['id'])
+        else:
+            pipelines = self.get_pipelines(project_name)
+
+        if exclude_disabled_pipelines and pipelines:
+            before = len(pipelines)
+            pipelines = [p for p in pipelines if str(p.get('queueStatus', '')).lower() not in {'disabled', 'paused'}]
+            self.logger.debug(f"Filtered disabled pipelines: {before} -> {len(pipelines)}")
+
         repo_data = {
             'repository': repo,
             'size': self.get_repository_size(project_name, repo['id']),
             'branches': self.get_repository_branches(project_name, repo['id']),
             'pull_requests': self.get_pull_requests(project_name, repo['id']),
             'work_items': work_items,
-            'pipelines': self.get_pipelines(project_name)
+            'pipelines': pipelines
         }
         
         self.logger.info(f"Repository data exported: {len(repo_data['branches'])} branches, "
@@ -832,7 +870,13 @@ class MigrationOrchestrator:
             
             # Step 2: Export data from Azure DevOps
             self._update_migration_state("Exporting Azure DevOps data")
-            azure_data = self.azure_client.export_repository_data(project_name, repo_name, include_work_items=migrate_issues)
+            azure_data = self.azure_client.export_repository_data(
+                project_name,
+                repo_name,
+                include_work_items=migrate_issues,
+                pipeline_scope=self.config.get('pipelines', {}).get('scope', getattr(self.args, 'pipelines_scope', 'project')) if hasattr(self, 'args') else 'project',
+                exclude_disabled_pipelines=(self.config.get('pipelines', {}).get('exclude_disabled', False) or getattr(self.args, 'exclude_disabled_pipelines', False) if hasattr(self, 'args') else False)
+            )
             
             # Step 3: Create/validate GitHub repository
             self._update_migration_state("Setting up GitHub repository")
@@ -1186,6 +1230,10 @@ def main():
                        help='Skip converting pipelines to GitHub Actions')
     parser.add_argument('--no-git', action='store_true',
                        help='Skip Git history migration (only create repository)')
+    parser.add_argument('--pipelines-scope', choices=['project', 'repository'], default='project',
+                       help='Scope of pipelines to migrate: project (all project pipelines) or repository (only those bound to the repo)')
+    parser.add_argument('--exclude-disabled-pipelines', action='store_true',
+                       help='Exclude pipelines whose queueStatus is disabled/paused')
     
     # Validation options
     parser.add_argument('--validate-only', action='store_true',
@@ -1205,35 +1253,37 @@ def main():
         # Handle utility commands first
         if args.list_projects or args.list_repos:
             return handle_list_commands(args)
-        
+
         # Initialize orchestrator
         orchestrator = MigrationOrchestrator(args.config)
-        
+        # Attach args for downstream methods needing CLI context (non-breaking optional attribute)
+        setattr(orchestrator, 'args', args)
+
         # Override debug logging if requested
         if args.debug:
             logging.getLogger().setLevel(logging.DEBUG)
             orchestrator.logger.setLevel(logging.DEBUG)
-        
+
         # Handle validation-only commands
         if args.validate_only or args.test_connections:
             return handle_validation_commands(orchestrator, args)
-        
+
         # Require project and repo for actual migration
         if not args.project or not args.repo:
             print("[ERROR] Error: --project and --repo are required for migration")
             parser.print_help()
             exit(1)
-        
+
         print(f"[STARTING] Starting migration: {args.project}/{args.repo} -> GitHub")
         if args.dry_run:
             print("[INFO]  DRY RUN MODE - No actual changes will be made")
-        
+
         # Validate credentials before migration
         print("[AUTH] Validating credentials...")
         if not orchestrator.validate_credentials():
             print("[ERROR] Credential validation failed. Please check your configuration.")
             exit(1)
-        
+
         # Perform migration
         success = orchestrator.migrate_repository(
             args.project,
@@ -1243,7 +1293,7 @@ def main():
             migrate_pipelines=not args.no_pipelines,
             dry_run=args.dry_run
         )
-        
+
         if success:
             print(f"[OK] {'[DRY RUN] ' if args.dry_run else ''}Migration completed successfully!")
             if args.dry_run:
@@ -1251,7 +1301,7 @@ def main():
         else:
             print("[ERROR] Migration failed. Check the logs for details.")
             exit(1)
-            
+
     except KeyboardInterrupt:
         print("\n[WARNING]  Migration interrupted by user")
         exit(1)
