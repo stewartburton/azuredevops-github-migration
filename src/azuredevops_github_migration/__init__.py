@@ -10,16 +10,36 @@ __author__ = "Stewart Burton"
 __email__ = "stewart@example.com"
 __license__ = "MIT"
 
-from .migrate import AzureDevOpsClient, GitHubClient, GitMigrator
-from .analyze import OrganizationAnalyzer  
-from .batch_migrate import BatchMigrator
-from .utils import *
-
+# Import classes only when needed to avoid dependency issues during installation
 __all__ = [
     "AzureDevOpsClient",
     "GitHubClient", 
     "GitMigrator",
-    "OrganizationAnalyzer",
-    "BatchMigrator",
+    "MigrationOrchestrator",
+    "AzureDevOpsAnalyzer",
+    "RateLimiter",
     "__version__"
 ]
+
+def __getattr__(name):
+    """Lazy import for package components to avoid import errors during installation."""
+    if name == "AzureDevOpsClient":
+        from .migrate import AzureDevOpsClient
+        return AzureDevOpsClient
+    elif name == "GitHubClient":
+        from .migrate import GitHubClient  
+        return GitHubClient
+    elif name == "GitMigrator":
+        from .migrate import GitMigrator
+        return GitMigrator
+    elif name == "MigrationOrchestrator":
+        from .migrate import MigrationOrchestrator
+        return MigrationOrchestrator
+    elif name == "AzureDevOpsAnalyzer":
+        from .analyze import AzureDevOpsAnalyzer
+        return AzureDevOpsAnalyzer
+    elif name == "RateLimiter":
+        from .utils import RateLimiter
+        return RateLimiter
+    else:
+        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
