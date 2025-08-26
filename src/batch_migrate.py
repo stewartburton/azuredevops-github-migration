@@ -69,6 +69,8 @@ def main():
     try:
         # Load migration plan
         migration_plan = load_migration_plan(args.plan)
+        # If plan entries omit 'migrate_issues' entirely (Jira / skip-work-items mode), default to False
+        omit_issue_field = all('migrate_issues' not in entry for entry in migration_plan)
         
         if args.dry_run:
             print("🔍 DRY RUN - Showing migration plan:")
@@ -94,7 +96,10 @@ def main():
             project_name = migration['project_name']
             repo_name = migration['repo_name']
             github_repo_name = migration.get('github_repo_name', repo_name)
-            migrate_issues = migration.get('migrate_issues', True)
+            if omit_issue_field:
+                migrate_issues = False
+            else:
+                migrate_issues = migration.get('migrate_issues', True)
             
             print(f"\n[{i}/{len(migration_plan)}] Migrating {project_name}/{repo_name}...")
             

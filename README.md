@@ -1,5 +1,24 @@
 # Azure DevOps to GitHub Migration Tool
 
+> TL;DR (Jira Mode – code & pipelines only, no work items)
+> ```bash
+> # 1. Use Jira-focused config (disables work items)
+> cp examples/jira-users-config.json config.json
+>
+> # 2. Analyze (skips & omits work items; creates plan)
+> python src/analyze.py --project "MyProject" --create-plan --config config.json --skip-work-items
+>
+> # 3. Dry run a single repo
+> python src/migrate.py --project "MyProject" --repo "my-repo" --dry-run --config config.json
+>
+> # 4. Migrate the repo (issues auto-disabled)
+> python src/migrate.py --project "MyProject" --repo "my-repo" --config config.json
+>
+> # 5. Batch migrate (plan has no migrate_issues fields)
+> python src/batch_migrate.py --plan migration_plan_<org>_*.json --config config.json
+> ```
+> `--skip-work-items` = no WIQL calls + no work item fields + later migrations treat repos as code-only.
+
 A comprehensive Python tool for migrating repositories, work items, and other artifacts from Azure DevOps to GitHub.
 
 ## Features
@@ -9,6 +28,7 @@ A comprehensive Python tool for migrating repositories, work items, and other ar
 - **Pipeline Scope Control**: Limit pipeline conversion to only those bound to the repository (`--pipelines-scope repository`) or include all project pipelines (default)
 - **Exclude Disabled Pipelines**: Skip disabled/paused pipelines with `--exclude-disabled-pipelines`
 - **Work Items to Issues** (Optional): Convert Azure DevOps work items to GitHub issues - skip if using Jira/other issue tracking
+- **Jira Mode / Work Item Suppression**: Use `--skip-work-items` during analysis (or a config with `migrate_work_items=false`) to automatically disable issue migration and omit work item fields from reports & plans
 - **Optional Remote Verification**: Post-push branch comparison with `--verify-remote` to ensure remote & local branches match
 - **Batch Processing**: Migrate multiple repositories using a migration plan
 - **Organization Analysis**: Analyze Azure DevOps organizations to plan migrations
@@ -109,6 +129,38 @@ python src/migrate.py --project "MyProject" --repo "my-repo" --exclude-disabled-
 python src/batch_migrate.py --plan examples/sample-migration-plan.json --config config.json
 ```
 
+### Jira Mode (Skip Work Items Completely)
+
+If you manage issues in Jira, you can fully suppress work item processing:
+
+```bash
+# Use the Jira-focused example config (sets migrate_work_items=false)
+cp examples/jira-users-config.json config.json
+
+# Analyze a specific project without querying or including work item data
+python src/analyze.py --project "MyProject" --create-plan --config config.json --skip-work-items
+
+# OR analyze entire organization (work items omitted)
+python src/analyze.py --create-plan --config config.json --skip-work-items
+
+# Dry run a repo (issue migration auto-disabled; no need for --no-issues)
+python src/migrate.py --project "MyProject" --repo "my-repo" --dry-run --config config.json
+
+# Actual migration (issues suppressed automatically)
+python src/migrate.py --project "MyProject" --repo "my-repo" --config config.json
+
+# Batch dry run (plan produced by --skip-work-items omits migrate_issues fields)
+python src/batch_migrate.py --plan migration_plan_<org>_*.json --dry-run --config config.json
+
+# Batch execute
+python src/batch_migrate.py --plan migration_plan_<org>_*.json --config config.json
+```
+
+Notes:
+* `--skip-work-items` both avoids Work Item API calls and removes work item statistics & `migrate_issues` flags from the analysis output and plan.
+* In batch mode: if a plan omits `migrate_issues`, the tool defaults those entries to `False`.
+* In single migrations: if your config has `"migrate_work_items": false`, issues are auto-disabled (even without `--no-issues`). Add `--no-issues` only for explicit clarity.
+
 ## Configuration
 
 ### Environment Variables
@@ -157,16 +209,16 @@ Analyze your Azure DevOps organization to understand what needs to be migrated.
 
 ```bash
 # Analyze entire organization
-python analyze.py
+python src/analyze.py --create-plan --config config.json
 
 # Analyze specific project
-python analyze.py --project "MyProject"
+python src/analyze.py --project "MyProject" --create-plan --config config.json
 
-# Create migration plan
-python analyze.py --create-plan
+# Jira mode (omit & skip work items)
+python src/analyze.py --project "MyProject" --create-plan --config config.json --skip-work-items
 
 # Export as CSV
-python analyze.py --format csv
+python src/analyze.py --format csv --config config.json
 ```
 
 ### `batch_migrate.py` - Batch Migration
@@ -175,13 +227,13 @@ Migrate multiple repositories using a migration plan.
 
 ```bash
 # Create sample migration plan
-python batch_migrate.py --create-sample
+python src/batch_migrate.py --create-sample
 
-# Dry run to see what would be migrated
-python batch_migrate.py --dry-run
+# Dry run to see what would be migrated (uses default plan name)
+python src/batch_migrate.py --dry-run --config config.json
 
-# Execute batch migration
-python batch_migrate.py --plan migration_plan.json
+# Execute batch migration with explicit plan
+python src/batch_migrate.py --plan migration_plan.json --config config.json
 ```
 
 ### `utils.py` - Utility Functions
@@ -413,10 +465,20 @@ python batch_migrate.py --plan your_plan.json
 | `--exclude-disabled-pipelines` | Omit disabled/paused pipelines | off |
 | `--no-git` | Skip Git history migration | off |
 | `--verify-remote` | Compare remote branch list to local after push | off |
+| `--skip-work-items` (analyze) | Do not query work items; omit related fields & auto-disable issue migration later | off |
 | `--debug` | Verbose logging | off |
 | `--validate-only` | Validate config & credentials only | off |
 
-Combine for precision, e.g.: `--pipelines-scope repository --exclude-disabled-pipelines --verify-remote --no-issues`.
+Combine for precision, e.g.: 
+```bash
+python src/migrate.py --project "MyProject" --repo "my-repo" \
+    --pipelines-scope repository --exclude-disabled-pipelines --verify-remote --dry-run
+```
+
+Automatic behaviors:
+* If config contains `"migrate_work_items": false`, single repo migrations suppress issues without needing `--no-issues`.
+* If a migration plan omits `migrate_issues` (produced via `--skip-work-items`), batch migration treats all entries as code-only.
+* Use `--no-issues` for explicitness when communicating commands to others.
 
 ## Troubleshooting
 

@@ -1378,11 +1378,20 @@ def main():
             exit(1)
 
         # Perform migration
+        # Determine whether to migrate issues:
+        migrate_issues_flag = not args.no_issues
+        # Respect configuration default (e.g. Jira users) if user didn't explicitly disable via CLI
+        try:
+            if migrate_issues_flag and orchestrator.config.get('migration', {}).get('migrate_work_items') is False:
+                migrate_issues_flag = False
+        except Exception:
+            pass
+
         success = orchestrator.migrate_repository(
             args.project,
             args.repo,
             args.github_repo,
-            migrate_issues=not args.no_issues,
+            migrate_issues=migrate_issues_flag,
             migrate_pipelines=not args.no_pipelines,
             dry_run=args.dry_run
         )
