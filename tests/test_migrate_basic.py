@@ -13,14 +13,21 @@ import requests
 
 # Import main classes - handle import errors gracefully
 try:
-    from src.migrate import (
+    from azuredevops_github_migration.migrate import (
         AzureDevOpsClient, GitHubClient, MigrationOrchestrator,
         AuthenticationError, MigrationError
     )
     IMPORTS_AVAILABLE = True
-except ImportError as e:
-    print(f"Warning: Could not import migrate module: {e}")
-    IMPORTS_AVAILABLE = False
+except ImportError:
+    try:
+        from src.migrate import (
+            AzureDevOpsClient, GitHubClient, MigrationOrchestrator,
+            AuthenticationError, MigrationError
+        )
+        IMPORTS_AVAILABLE = True
+    except ImportError as e:
+        print(f"Warning: Could not import migrate module: {e}")
+        IMPORTS_AVAILABLE = False
 
 
 class TestBasicFunctionality(unittest.TestCase):
@@ -166,7 +173,9 @@ class TestFileStructure(unittest.TestCase):
     
     def test_main_script_exists(self):
         """Test that migrate.py exists."""
-        self.assertTrue(os.path.exists('src/migrate.py'), "src/migrate.py should exist")
+        legacy = os.path.exists('src/migrate.py')
+        new_path = os.path.exists('src/azuredevops_github_migration/migrate.py')
+        self.assertTrue(legacy or new_path, "migrate module not found in expected locations")
     
     def test_config_template_exists(self):
         """Test that config template exists and is valid JSON."""
@@ -200,11 +209,14 @@ class TestScriptSyntax(unittest.TestCase):
     
     def test_main_script_syntax(self):
         """Test that migrate.py has valid Python syntax."""
+        import py_compile
+        target = 'src/azuredevops_github_migration/migrate.py'
+        if not os.path.exists(target):
+            target = 'src/migrate.py'
         try:
-            import py_compile
-            py_compile.compile('src/migrate.py', doraise=True)
+            py_compile.compile(target, doraise=True)
         except py_compile.PyCompileError as e:
-            self.fail(f"src/migrate.py has syntax errors: {e}")
+            self.fail(f"Syntax error in {target}: {e}")
     
     def test_utility_scripts_syntax(self):
         """Test that utility scripts have valid syntax."""
