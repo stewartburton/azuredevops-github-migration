@@ -174,7 +174,7 @@ GITHUB_TOKEN=your_github_personal_access_token
 
 ### Migration Config
 
-Edit `migration_config.yaml` to configure:
+Edit `config.json` to configure:
 
 - Azure DevOps organization and authentication
 - GitHub organization and settings  
@@ -182,6 +182,8 @@ Edit `migration_config.yaml` to configure:
 - State mappings
 - Rate limiting settings
 - Logging configuration
+
+See the [Configuration Reference](docs/technical/configuration.md) for complete options.
 
 ## Scripts Overview
 
@@ -191,16 +193,16 @@ Single repository migration with full control over the process.
 
 ```bash
 # Basic usage
-python migrate.py --project "MyProject" --repo "my-repo"
+python src/migrate.py --project "MyProject" --repo "my-repo" --config config.json
 
 # Custom GitHub repo name
-python migrate.py --project "MyProject" --repo "my-repo" --github-repo "new-name"
+python src/migrate.py --project "MyProject" --repo "my-repo" --github-repo "new-name" --config config.json
 
 # Skip work item migration
-python migrate.py --project "MyProject" --repo "my-repo" --no-issues
+python src/migrate.py --project "MyProject" --repo "my-repo" --no-issues --config config.json
 
 # Limit pipelines to the repository & exclude disabled, with remote verification
-python migrate.py --project "MyProject" --repo "my-repo" --pipelines-scope repository --exclude-disabled-pipelines --verify-remote
+python src/migrate.py --project "MyProject" --repo "my-repo" --pipelines-scope repository --exclude-disabled-pipelines --verify-remote --config config.json
 ```
 
 ### `analyze.py` - Organization Analyzer
@@ -258,7 +260,7 @@ Contains helper functions for:
 - Converted to GitHub Actions workflows
 - Basic pipeline structure and steps
 - Build and deployment configurations
- - Repository-level filtering and disabled pipeline exclusion available
+- Repository-level filtering and disabled pipeline exclusion available
 
 ✅ **Work Items → Issues** (Optional - Skip if using Jira)
 - Title and description (HTML → Markdown)
@@ -275,13 +277,15 @@ Contains helper functions for:
 ❌ **Git-level items that require special handling:**
 - Pull requests (GitHub API doesn't support creating historical PRs)
 - Branch policies
-- Build pipelines
+- Code review comments
 
 ❌ **Azure DevOps specific features:**
 - Wiki pages
 - Test plans and cases
 - Boards configuration
 - Extensions and customizations
+- Work item attachments (files)
+- Build/Release pipeline history (only YAML definitions are converted)
 
 ## 📚 Documentation Quick Links
 
@@ -403,11 +407,12 @@ GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxx
 
 ### Verification Checklist
 Run these steps; if a step fails, add only the missing scope:
-1. Analyze / list projects (`analyze.py --create-plan`) → validates Azure DevOps Code Read + Project & Team Read
-2. Dry run repo migration (`migrate.py --dry-run`) → validates Code Read
-3. Work item fetch (if not using `--no-issues`) → validates Work Items Read
-4. Repo creation in org (if configured) → validates admin:org
-5. Push to GitHub (actual migration) → validates repo scope
+1. Validate setup (`python src/migrate.py --validate-only --config config.json`) → validates all credentials
+2. Analyze / list projects (`python src/analyze.py --create-plan --config config.json`) → validates Azure DevOps Code Read + Project & Team Read
+3. Dry run repo migration (`python src/migrate.py --dry-run --config config.json`) → validates Code Read
+4. Work item fetch (if not using `--no-issues`) → validates Work Items Read
+5. Repo creation in org (if configured) → validates admin:org
+6. Push to GitHub (actual migration) → validates repo scope
 
 After migration, narrow or revoke PATs if no ongoing synchronization is required.
 
@@ -416,7 +421,7 @@ After migration, narrow or revoke PATs if no ongoing synchronization is required
 ### 1. Analysis Phase
 
 ```bash
-python analyze.py --create-plan
+python src/analyze.py --create-plan --config config.json
 ```
 
 This generates:
@@ -435,10 +440,10 @@ Edit the migration plan to:
 
 ```bash
 # Test with dry run first
-python batch_migrate.py --dry-run --plan your_plan.json
+python src/batch_migrate.py --dry-run --plan your_plan.json --config config.json
 
 # Execute migration
-python batch_migrate.py --plan your_plan.json
+python src/batch_migrate.py --plan your_plan.json --config config.json
 ```
 
 ## Logging and Reports
@@ -452,7 +457,7 @@ python batch_migrate.py --plan your_plan.json
 - JSON reports with complete migration data
 - Statistics and success/failure tracking
 - Timestamp-based file naming
- - When `--verify-remote` is used, logs include remote vs local branch comparison (missing/extra branches)
+- When `--verify-remote` is used, logs include remote vs local branch comparison (missing/extra branches)
 
 ## Key CLI Flags (Quick Reference)
 

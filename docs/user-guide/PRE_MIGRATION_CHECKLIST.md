@@ -5,7 +5,7 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ## ✅ Prerequisites Verification
 
 ### System Requirements
-- [ ] **Python 3.8+** installed and accessible
+- [ ] **Python 3.7+** installed and accessible
 - [ ] **Git 2.20+** installed and accessible from command line
 - [ ] **Sufficient disk space** (at least 3x repository size for temporary files)
 - [ ] **Network connectivity** to both Azure DevOps and GitHub APIs
@@ -19,28 +19,31 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ## ✅ Credential Setup
 
 ### Azure DevOps Personal Access Token (PAT)
-- [ ] **PAT created** with appropriate scopes:
-  - [ ] **Code (Read & Write)** - for repository access
-  - [ ] **Work Items (Read)** - for work item migration  
-  - [ ] **Project and Team (Read)** - for project information
-- [ ] **PAT expiration date** set appropriately (recommend 1+ year for large migrations)
+- [ ] **PAT created** with **minimum required scopes:**
+  - [ ] **Code (Read)** - for repository access (required)
+  - [ ] **Project and Team (Read)** - for project information (required)
+  - [ ] **Work Items (Read)** - ONLY if migrating work items (skip if using Jira)
+- [ ] **PAT expiration date** set appropriately (recommend short duration: 30-60 days)
+- [ ] **Least privilege principle applied** - only scopes actually needed
 - [ ] **PAT tested** with Azure DevOps REST API
 - [ ] **PAT stored securely** in environment variable or secure vault
 
 ### GitHub Personal Access Token
-- [ ] **Token created** with required scopes:
-  - [ ] **repo** - full control of private repositories
-  - [ ] **public_repo** - access public repositories (if needed)
-  - [ ] **admin:org** - full control of orgs (if migrating to organization)
-  - [ ] **user** - read user profile data
+- [ ] **Fine-grained PAT created** (recommended) or Classic PAT
+- [ ] **Token created** with **minimum required scopes:**
+  - [ ] **repo** - full control of private repositories (required)
+  - [ ] **admin:org** - ONLY if tool needs to create repositories in organization
+  - [ ] **delete_repo** - ONLY if implementing rollback functionality
+  - [ ] **workflow** - ONLY if manipulating workflow runs beyond committing YAML
+- [ ] **Repository access** configured (specific repos preferred over "All repositories")
 - [ ] **Token expiration date** set appropriately
 - [ ] **Token tested** with GitHub API
 - [ ] **Token stored securely** in environment variable
 
 ### Credential Testing
-- [ ] **Azure DevOps connection validated:**
+- [ ] **All connections validated:**
   ```bash
-  python migrate.py --test-connections --config config.json
+  python src/migrate.py --validate-only --config config.json
   ```
 - [ ] **GitHub connection validated**
 - [ ] **Rate limits checked** for both services
@@ -57,7 +60,7 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
   ```
 - [ ] **Configuration validated:**
   ```bash
-  python migrate.py --validate-only --config config.json
+  python src/migrate.py --validate-only --config config.json
   ```
 - [ ] **Sensitive data excluded** from version control
 - [ ] **Backup of configuration** stored securely
@@ -73,9 +76,9 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ## ✅ Source Analysis (Azure DevOps)
 
 ### Repository Assessment
-- [ ] **Repository list obtained:**
+- [ ] **Repository analysis completed:**
   ```bash
-  python migrate.py --list-repos "ProjectName" --config config.json
+  python src/analyze.py --project "ProjectName" --config config.json
   ```
 - [ ] **Repository sizes determined**
 - [ ] **Large repositories identified** (> 1GB warning)
@@ -83,12 +86,16 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 - [ ] **Branch structure analyzed**
 - [ ] **Git LFS usage identified** (if applicable)
 
-### Work Items Analysis
-- [ ] **Work item count determined**
-- [ ] **Work item types catalogued**
-- [ ] **Custom fields identified**
-- [ ] **Work item relationships mapped**
-- [ ] **Attachments inventory completed**
+### Work Items Analysis (Skip if using Jira)
+- [ ] **Decision made:** Migrate work items to GitHub Issues OR continue using Jira
+- [ ] **If migrating work items:**
+  - [ ] Work item count determined
+  - [ ] Work item types catalogued
+  - [ ] Custom fields identified
+  - [ ] Work item relationships mapped
+- [ ] **If using Jira mode:**
+  - [ ] `examples/jira-users-config.json` selected as template
+  - [ ] `--skip-work-items` flag planned for analysis
 
 ### Pipelines Analysis
 - [ ] **Pipeline count determined**
@@ -100,7 +107,9 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ### Project Analysis
 - [ ] **Organization analysis completed:**
   ```bash
-  python analyze.py --create-plan --config config.json
+  python src/analyze.py --create-plan --config config.json
+  # OR for Jira users (no work items):
+  python src/analyze.py --create-plan --config config.json --skip-work-items
   ```
 - [ ] **Migration plan generated and reviewed**
 - [ ] **Priority repositories identified**
@@ -135,7 +144,7 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ### Testing Strategy
 - [ ] **Test migration performed:**
   ```bash
-  python migrate.py --project "TestProject" --repo "test-repo" --dry-run
+  python src/migrate.py --project "TestProject" --repo "test-repo" --dry-run --config config.json
   ```
 - [ ] **Dry run results validated**
 - [ ] **Test repository successfully migrated**
@@ -208,7 +217,7 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ### Pre-Migration Testing
 - [ ] **Complete dry run performed:**
   ```bash
-  python migrate.py --project "RealProject" --repo "target-repo" --dry-run --debug
+  python src/migrate.py --project "RealProject" --repo "target-repo" --dry-run --debug --config config.json
   ```
 - [ ] **All validation checks passed**
 - [ ] **Performance within acceptable limits**
@@ -249,40 +258,46 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ### Validation Commands
 ```bash
 # Validate configuration and credentials
-python migrate.py --validate-only --config config.json
+python src/migrate.py --validate-only --config config.json
 
-# Test API connections
-python migrate.py --test-connections --config config.json
+# List available projects and analyze
+python src/analyze.py --config config.json
 
-# List available projects
-python migrate.py --list-projects --config config.json
-
-# List repositories in project
-python migrate.py --list-repos "MyProject" --config config.json
+# Analyze specific project
+python src/analyze.py --project "MyProject" --config config.json
 ```
 
 ### Analysis Commands
 ```bash
 # Analyze organization and create migration plan
-python analyze.py --create-plan --config config.json
+python src/analyze.py --create-plan --config config.json
+
+# Jira users (skip work items completely)
+python src/analyze.py --create-plan --config config.json --skip-work-items
 
 # Analyze specific project
-python analyze.py --project "MyProject" --config config.json
+python src/analyze.py --project "MyProject" --config config.json
 
 # Generate CSV report
-python analyze.py --format csv --config config.json
+python src/analyze.py --format csv --config config.json
 ```
 
 ### Testing Commands
 ```bash
 # Dry run single repository
-python migrate.py --project "MyProject" --repo "test-repo" --dry-run --config config.json
+python src/migrate.py --project "MyProject" --repo "test-repo" --dry-run --config config.json
 
 # Dry run batch migration
-python batch_migrate.py --dry-run --plan migration_plan.json
+python src/batch_migrate.py --dry-run --plan migration_plan.json --config config.json
 
-# Test with debug logging
-python migrate.py --project "MyProject" --repo "test-repo" --dry-run --debug --config config.json
+# Test with debug logging and additional flags
+python src/migrate.py --project "MyProject" --repo "test-repo" --dry-run --debug --config config.json
+
+# Test pipeline scope control
+python src/migrate.py --project "MyProject" --repo "test-repo" --pipelines-scope repository --dry-run --config config.json
+
+# Test with remote verification
+python src/migrate.py --project "MyProject" --repo "test-repo" --verify-remote --dry-run --config config.json
 ```
 
 ## ⚠️ Common Issues to Check

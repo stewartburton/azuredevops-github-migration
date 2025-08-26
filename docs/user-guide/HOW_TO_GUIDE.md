@@ -1,5 +1,24 @@
 # How to Use the Azure DevOps to GitHub Migration Tool
 
+> **TL;DR (Jira Mode – code & pipelines only, no work items)**
+> ```bash
+> # 1. Use Jira-focused config (disables work items)
+> cp examples/jira-users-config.json config.json
+>
+> # 2. Analyze (skips & omits work items; creates plan)
+> python src/analyze.py --project "MyProject" --create-plan --config config.json --skip-work-items
+>
+> # 3. Dry run a single repo
+> python src/migrate.py --project "MyProject" --repo "my-repo" --dry-run --config config.json
+>
+> # 4. Migrate the repo (issues auto-disabled)
+> python src/migrate.py --project "MyProject" --repo "my-repo" --config config.json
+>
+> # 5. Batch migrate (plan has no migrate_issues fields)
+> python src/batch_migrate.py --plan migration_plan_<org>_*.json --config config.json
+> ```
+> `--skip-work-items` = no WIQL calls + no work item fields + later migrations treat repos as code-only.
+
 This comprehensive guide will walk you through the entire process of migrating your repositories and work items from Azure DevOps to GitHub.
 
 ## Table of Contents
@@ -12,7 +31,12 @@ This comprehensive guide will walk you through the entire process of migrating y
 6. [Running Migrations](#running-migrations)
 7. [Post-Migration Steps](#post-migration-steps)
 8. [Common Scenarios](#common-scenarios)
-9. [Troubleshooting](#troubleshooting)
+9. [Key CLI Flags](#key-cli-flags-quick-reference)
+10. [Advanced Configuration](#advanced-configuration)
+11. [Validation and Testing](#validation-and-testing)
+12. [Best Practices](#best-practices)
+13. [Troubleshooting](#troubleshooting)
+14. [Example End-to-End Workflow](#example-end-to-end-workflow)
 
 ## Prerequisites
 
@@ -29,11 +53,11 @@ Before you begin, ensure you have:
 ### Option 1: Automated Setup (Recommended)
 
 ```bash
-# Clone or download the migration tool
-git clone <repository-url>
+# Clone the repository
+git clone https://github.com/stewartburton/azuredevops-github-migration.git
 cd azuredevops-github-migration
 
-# Run the setup script
+# Run automated setup
 chmod +x scripts/setup.sh
 ./scripts/setup.sh
 ```
@@ -47,17 +71,17 @@ The setup script will:
 ### Option 2: Manual Setup
 
 ```bash
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate.bat  # Windows
-
 # Install dependencies
 pip install -r requirements.txt
 
-# Copy configuration templates
-cp config/config.template.json config.json
+# Choose your configuration template
+cp examples/jira-users-config.json config.json          # For Jira users
+# OR
+cp config/config.template.json config.json              # Custom configuration
+
+# Set up environment variables
 cp .env.example .env
+# Edit .env with your tokens: AZURE_DEVOPS_PAT and GITHUB_TOKEN
 ```
 
 ## Configuration
@@ -94,25 +118,62 @@ GITHUB_TOKEN=your_github_personal_access_token
 
 ## Authentication Setup
 
-### Azure DevOps Personal Access Token
+Use least privilege. Start with the minimum scopes and add only if the tool reports an authorization error for a feature you actually need.
 
-1. Go to Azure DevOps → Click your profile → Personal Access Tokens
-2. Click "New Token"
-3. Set the following scopes:
-   - **Code**: Read & Write (for repositories)
-   - **Work Items**: Read (for work items)
-   - **Project and Team**: Read (for project information)
-4. Copy the generated token to your `.env` file
+### Required Personal Access Token (PAT) Scopes
 
-### GitHub Personal Access Token
+#### Azure DevOps PAT
+**Minimum** (repository migration only – no work items):
+- Code: Read (clone repositories, enumerate branches/tags)
+- Project and Team: Read (list projects & repos)
 
-1. Go to GitHub → Settings → Developer Settings → Personal Access Tokens
-2. Click "Generate new token"
-3. Select the following scopes:
-   - `repo` (Full control of private repositories)
-   - `admin:org` (if migrating to an organization)
-   - `user` (for user information)
-4. Copy the generated token to your `.env` file
+**Add ONLY if needed:**
+- Work Items: Read (when converting work items to GitHub issues; omit when using `--no-issues` or Jira)
+- Code: Read & Write (only if you intentionally push changes back to Azure DevOps – not required for one‑way migration)
+
+#### GitHub PAT
+**Minimum** (target repos already exist or created manually):
+- repo (covers contents, issues, pulls for private & public repos)
+
+**Add ONLY if needed:**
+- admin:org (tool needs to create new repositories inside an organization)
+- delete_repo (you implement rollback that deletes created repos)
+- workflow (you programmatically manipulate Actions runs beyond committing YAML files)
+
+### Obtaining Tokens
+
+#### Azure DevOps (Create PAT)
+1. In any Azure DevOps page, click your avatar (top-right) → **User settings** → **Personal access tokens**.
+2. Click **+ New Token**.
+3. Fill in:
+    - **Name**: e.g. `ado-migration-temp`.
+    - **Organization**: (choose the source org).
+    - **Expiration**: Short as practical (e.g. 30 or 60 days).
+4. Under **Scopes**, click **Custom defined** and select ONLY the scopes you need:
+    - Start with: Code (Read), Project and Team (Read).
+    - Add Work Items (Read) ONLY if migrating issues.
+5. Click **Create** and copy the token immediately (cannot be recovered later).
+
+#### GitHub (Fine‑grained PAT – Recommended)
+1. GitHub → **Settings** (profile) → **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**.
+2. **Token name**: e.g. `gh-migration-fg`.
+3. **Expiration**: Select a short duration matching migration window.
+4. **Resource owner**: Select the user or organization that owns the destination repositories.
+5. **Repository access**: Choose specific repositories (preferred) or **All repositories** only if necessary.
+6. **Permissions**: Under *Repository permissions* grant:
+    - **Contents**: Read and write (required for pushing migrated history).
+    - **Metadata**: Read (automatically included).
+    - **Issues**: Read & write (only if migrating work items → GitHub issues).
+7. Generate token and copy it once. Store securely.
+
+#### GitHub (Classic PAT – When Fine‑grained Not Suitable)
+1. GitHub → **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)** → **Generate new token**.
+2. **Note**: Provide a descriptive name, set a short expiration.
+3. Select scopes:
+    - **repo** (includes repo:status, repo_deployment, public_repo, repo:invite).
+    - **admin:org** ONLY if the tool itself will create repositories in the organization.
+    - **delete_repo** ONLY if you will automate rollback deletion.
+4. Generate & copy once. Store securely.
 
 ## Planning Your Migration
 
@@ -121,14 +182,20 @@ GITHUB_TOKEN=your_github_personal_access_token
 Before migrating, analyze what you have:
 
 ```bash
+# Validate your setup first
+python src/migrate.py --validate-only --config config.json
+
 # Analyze entire organization
-python src/analyze.py
+python src/analyze.py --create-plan --config config.json
 
 # Analyze specific project
-python src/analyze.py --project "MyProject"
+python src/analyze.py --project "MyProject" --create-plan --config config.json
 
-# Generate migration plan
-python src/analyze.py --create-plan
+# Jira mode (omit & skip work items)
+python src/analyze.py --project "MyProject" --create-plan --config config.json --skip-work-items
+
+# Export as CSV
+python src/analyze.py --format csv --config config.json
 ```
 
 This creates:
@@ -162,24 +229,38 @@ Example migration plan:
 ### Single Repository Migration
 
 ```bash
-# Typical migration for Jira users (repository + pipelines only)
-python src/migrate.py --project "MyProject" --repo "my-repo" --no-issues
+# Basic migration commands
 
-# With custom GitHub repository name
-python src/migrate.py --project "MyProject" --repo "my-repo" --github-repo "new-repo-name" --no-issues
+# 1. Test migration (safe, no changes)
+python src/migrate.py --project "MyProject" --repo "my-repo" --dry-run --config config.json
 
-# Full migration including work items (if not using Jira)
-python src/migrate.py --project "MyProject" --repo "my-repo"
+# 2. Typical migration for Jira users (repository + pipelines only)
+python src/migrate.py --project "MyProject" --repo "my-repo" --no-issues --config config.json
+
+# 3. With custom GitHub repository name
+python src/migrate.py --project "MyProject" --repo "my-repo" --github-repo "new-repo-name" --config config.json
+
+# 4. Repository-only pipelines (instead of all project pipelines)
+python src/migrate.py --project "MyProject" --repo "my-repo" --pipelines-scope repository --config config.json
+
+# 5. Exclude disabled pipelines & verify remote branches post-push
+python src/migrate.py --project "MyProject" --repo "my-repo" --exclude-disabled-pipelines --verify-remote --config config.json
+
+# 6. Full migration including work items (if not using Jira)
+python src/migrate.py --project "MyProject" --repo "my-repo" --config config.json
 ```
 
 ### Batch Migration
 
 ```bash
-# Test with dry run first
-python src/batch_migrate.py --dry-run --plan migration_plan.json
+# Create sample migration plan
+python src/batch_migrate.py --create-sample
 
-# Execute the migration
-python src/batch_migrate.py --plan migration_plan.json
+# Test with dry run first (uses default plan name)
+python src/batch_migrate.py --dry-run --config config.json
+
+# Execute batch migration with explicit plan
+python src/batch_migrate.py --plan migration_plan.json --config config.json
 ```
 
 ### Monitor Progress
@@ -210,7 +291,14 @@ git branch -a
 git log --oneline -10
 ```
 
-### 2. Verify Work Items → Issues Migration
+### 2. Verify Remote Branches (if using --verify-remote)
+
+Check the migration logs for:
+- Remote vs local branch comparison
+- Any missing or extra branches reported
+- Confirmation that all branches were pushed successfully
+
+### 3. Verify Work Items → Issues Migration (if enabled)
 
 In GitHub, check:
 - Issues were created with correct titles
@@ -218,14 +306,14 @@ In GitHub, check:
 - Labels were applied correctly
 - Issue states match your configuration
 
-### 3. Update Team Workflows
+### 4. Update Team Workflows
 
 - Update CI/CD pipelines to point to GitHub
 - Update documentation links
 - Notify team members of the new repository location
 - Update any integrations or webhooks
 
-### 4. Archive Azure DevOps Repositories
+### 5. Archive Azure DevOps Repositories
 
 Once you've verified the migration:
 1. Make repositories read-only in Azure DevOps
@@ -239,28 +327,23 @@ Once you've verified the migration:
 If you're using Jira for issue tracking and only need to migrate Git repositories and pipelines:
 
 ```bash
-# Single repository migration (no work items)
-python src/migrate.py --project "MyProject" --repo "my-app" --no-issues
+# Use the Jira-focused example config (sets migrate_work_items=false)
+cp examples/jira-users-config.json config.json
 
-# Custom migration plan for Jira users
-cat > jira_user_plan.json << 'EOF'
-[
-  {
-    "project_name": "MyProject",
-    "repo_name": "frontend-app", 
-    "github_repo_name": "frontend-app",
-    "migrate_issues": false
-  },
-  {
-    "project_name": "MyProject",
-    "repo_name": "backend-api",
-    "github_repo_name": "backend-api", 
-    "migrate_issues": false
-  }
-]
-EOF
+# Analyze without querying work item data
+python src/analyze.py --project "MyProject" --create-plan --config config.json --skip-work-items
 
-python src/batch_migrate.py --plan jira_user_plan.json
+# Dry run a repo (issue migration auto-disabled; no need for --no-issues)
+python src/migrate.py --project "MyProject" --repo "my-repo" --dry-run --config config.json
+
+# Actual migration (issues suppressed automatically)
+python src/migrate.py --project "MyProject" --repo "my-repo" --config config.json
+
+# Batch dry run (plan produced by --skip-work-items omits migrate_issues fields)
+python src/batch_migrate.py --plan migration_plan_<org>_*.json --dry-run --config config.json
+
+# Batch execute
+python src/batch_migrate.py --plan migration_plan_<org>_*.json --config config.json
 ```
 
 **What you get:**
@@ -269,19 +352,33 @@ python src/batch_migrate.py --plan jira_user_plan.json
 - ✅ All branches and tags preserved
 - ❌ No GitHub issues created (continue using Jira)
 
-### Scenario 2: Large Organization Migration
+### Scenario 2: Advanced Pipeline Control
+
+```bash
+# Repository-specific pipelines only (not all project pipelines)
+python src/migrate.py --project "MyProject" --repo "my-repo" --pipelines-scope repository --config config.json
+
+# Exclude disabled/paused pipelines
+python src/migrate.py --project "MyProject" --repo "my-repo" --exclude-disabled-pipelines --config config.json
+
+# Combine multiple flags for precision
+python src/migrate.py --project "MyProject" --repo "my-repo" \
+    --pipelines-scope repository --exclude-disabled-pipelines --verify-remote --dry-run --config config.json
+```
+
+### Scenario 3: Large Organization Migration
 
 ```bash
 # 1. Start with analysis
-python src/analyze.py --create-plan
+python src/analyze.py --create-plan --config config.json
 
 # 2. Edit the generated plan to prioritize critical repositories
 # 3. Run migration in batches
-python src/batch_migrate.py --plan high_priority_repos.json
-python src/batch_migrate.py --plan medium_priority_repos.json
+python src/batch_migrate.py --plan high_priority_repos.json --config config.json
+python src/batch_migrate.py --plan medium_priority_repos.json --config config.json
 ```
 
-### Scenario 2: Selective Repository Migration
+### Scenario 4: Selective Repository Migration
 
 ```bash
 # Create custom migration plan
@@ -302,23 +399,30 @@ cat > custom_plan.json << 'EOF'
 ]
 EOF
 
-python src/batch_migrate.py --plan custom_plan.json
+python src/batch_migrate.py --plan custom_plan.json --config config.json
 ```
 
-### Scenario 3: Work Items Only Migration
+### Scenario 5: Work Items Only Migration
 
-If you only want to migrate work items to issues:
+If you only want to migrate work items to issues (no Git repositories):
 
+```bash
+# Configure for work items only
+python src/migrate.py --project "MyProject" --repo "my-repo" --no-git --no-pipelines --config config.json
+```
+
+Or in your config.json:
 ```json
 {
   "migration": {
     "migrate_work_items": true,
-    "migrate_pull_requests": false
+    "migrate_git_history": false,
+    "migrate_pipelines": false
   }
 }
 ```
 
-### Scenario 4: Different GitHub Organization
+### Scenario 6: Different GitHub Organization
 
 ```json
 {
@@ -329,7 +433,35 @@ If you only want to migrate work items to issues:
 }
 ```
 
+## Key CLI Flags (Quick Reference)
+
+| Flag | Purpose | Default |
+|------|---------|--------|
+| `--dry-run` | Simulate migration without side effects | off |
+| `--no-issues` | Skip work item → issue conversion | off |
+| `--no-pipelines` | Skip pipeline conversion | off |
+| `--pipelines-scope {project\|repository}` | Control pipeline selection scope | project |
+| `--exclude-disabled-pipelines` | Omit disabled/paused pipelines | off |
+| `--no-git` | Skip Git history migration | off |
+| `--verify-remote` | Compare remote branch list to local after push | off |
+| `--skip-work-items` (analyze) | Do not query work items; omit related fields & auto-disable issue migration later | off |
+| `--debug` | Verbose logging | off |
+| `--validate-only` | Validate config & credentials only | off |
+
+**Automatic behaviors:**
+* If config contains `"migrate_work_items": false`, single repo migrations suppress issues without needing `--no-issues`.
+* If a migration plan omits `migrate_issues` (produced via `--skip-work-items`), batch migration treats all entries as code-only.
+* Use `--no-issues` for explicitness when communicating commands to others.
+
 ## Advanced Configuration
+
+### Ready-to-Use Configuration Examples
+
+The tool provides several pre-configured templates in the `examples/` directory:
+
+- **`examples/jira-users-config.json`** - Most common: Code & pipelines only (work items disabled)
+- **`examples/full-migration-config.json`** - Complete migration including work items
+- **`config/config.template.json`** - Blank template for custom configuration
 
 ### Custom Field Mappings
 
@@ -389,19 +521,26 @@ Exclude specific repositories or work items:
 ### Pre-Migration Testing
 
 ```bash
-# Test connection to Azure DevOps
-python -c "from src.migrate import AzureDevOpsClient; client = AzureDevOpsClient('org', 'token'); print(len(client.get_projects()))"
+# Validate your setup
+python src/migrate.py --validate-only --config config.json
 
-# Test connection to GitHub
-python -c "from src.migrate import GitHubClient; client = GitHubClient('token'); print(client.get_user()['login'])"
+# Test with dry run
+python src/migrate.py --project "MyProject" --repo "test-repo" --dry-run --config config.json
+
+# Verify tokens work by running analysis
+python src/analyze.py --project "MyProject" --config config.json
 ```
 
 ### Post-Migration Validation
 
 ```bash
 # Compare repository statistics
-python src/analyze.py --project "MyProject" > before_migration.txt
+python src/analyze.py --project "MyProject" --config config.json > before_migration.txt
 # After migration, check GitHub repository for equivalent data
+
+# Verify migration reports
+ls -la migration_report_*.json
+ls -la analysis_report_*.json
 ```
 
 ## Best Practices
@@ -414,14 +553,39 @@ python src/analyze.py --project "MyProject" > before_migration.txt
 6. **Communicate Changes**: Inform your team about new repository locations
 7. **Gradual Transition**: Migrate in phases rather than all at once
 
-## Getting Help
+## Troubleshooting
+
+### Common Issues
+
+**Authentication Errors**
+- Verify your personal access tokens
+- Check token permissions/scopes
+- Ensure tokens haven't expired
+
+**Rate Limiting**
+- Tool includes built-in rate limiting
+- Adjust `delay_between_requests` in config if needed
+- GitHub has stricter limits for organization repositories
+
+**Large Repositories**
+- Tool handles large repos, but migration time increases
+- Consider migrating during off-peak hours
+- Monitor disk space for local clones
+
+**Work Item Conversion**
+- Complex HTML in work items may need manual review
+- Custom fields won't be migrated automatically
+- Large work item descriptions may be truncated
+
+### Getting Help
 
 If you encounter issues:
 
 1. Check the migration logs (`migration.log`)
-2. Review the troubleshooting documentation (`docs/troubleshooting.md`)
+2. Review the troubleshooting documentation (`docs/technical/troubleshooting.md`)
 3. Validate your configuration against the template
 4. Test with a smaller dataset first
+5. Review GitHub and Azure DevOps API documentation
 
 ## Example End-to-End Workflow
 
@@ -432,22 +596,39 @@ Here's a complete example workflow:
 ./scripts/setup.sh
 
 # 2. Configure
+cp examples/jira-users-config.json config.json  # For Jira users (most common)
 # Edit config.json and .env files
 
-# 3. Analyze
-python src/analyze.py --create-plan
+# 3. Validate
+python src/migrate.py --validate-only --config config.json
 
-# 4. Plan
+# 4. Analyze
+python src/analyze.py --create-plan --config config.json
+# For Jira users: add --skip-work-items flag
+
+# 5. Plan
 # Edit the generated migration plan
 
-# 5. Test
-python src/batch_migrate.py --dry-run --plan migration_plan.json
+# 6. Test
+python src/batch_migrate.py --dry-run --plan migration_plan.json --config config.json
 
-# 6. Execute
-python src/batch_migrate.py --plan migration_plan.json
+# 7. Execute
+python src/batch_migrate.py --plan migration_plan.json --config config.json
 
-# 7. Verify
-# Check GitHub repositories and issues
+# 8. Verify
+# Check GitHub repositories and issues (if enabled)
+# Review migration logs for any branch verification results
 ```
 
 This completes the migration process. Your Azure DevOps repositories and work items should now be successfully migrated to GitHub!
+
+---
+
+## Additional Resources
+
+- **[📖 Complete README](../../README.md)** - Full project documentation with all features
+- **[✅ Pre-Migration Checklist](PRE_MIGRATION_CHECKLIST.md)** - 100+ validation items before migration  
+- **[🧪 Testing Guide](TESTING.md)** - Comprehensive testing procedures
+- **[⚙️ Configuration Reference](../technical/configuration.md)** - Complete configuration options
+- **[🔍 Troubleshooting Guide](../technical/troubleshooting.md)** - Problem resolution and debugging
+- **[🔌 API Documentation](../technical/api.md)** - Technical API reference
