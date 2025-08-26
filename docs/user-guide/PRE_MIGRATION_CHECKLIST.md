@@ -43,7 +43,7 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ### Credential Testing
 - [ ] **All connections validated:**
   ```bash
-  python src/migrate.py --validate-only --config config.json
+  azuredevops-github-migration migrate --validate-only --config config.json
   ```
 - [ ] **GitHub connection validated**
 - [ ] **Rate limits checked** for both services
@@ -60,7 +60,7 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
   ```
 - [ ] **Configuration validated:**
   ```bash
-  python src/migrate.py --validate-only --config config.json
+  azuredevops-github-migration migrate --validate-only --config config.json
   ```
 - [ ] **Sensitive data excluded** from version control
 - [ ] **Backup of configuration** stored securely
@@ -78,7 +78,7 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ### Repository Assessment
 - [ ] **Repository analysis completed:**
   ```bash
-  python src/analyze.py --project "ProjectName" --config config.json
+  azuredevops-github-migration analyze --project "ProjectName" --config config.json
   ```
 - [ ] **Repository sizes determined**
 - [ ] **Large repositories identified** (> 1GB warning)
@@ -107,9 +107,9 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ### Project Analysis
 - [ ] **Organization analysis completed:**
   ```bash
-  python src/analyze.py --create-plan --config config.json
+  azuredevops-github-migration analyze --create-plan --config config.json
   # OR for Jira users (no work items):
-  python src/analyze.py --create-plan --config config.json --skip-work-items
+  azuredevops-github-migration analyze --create-plan --config config.json --skip-work-items
   ```
 - [ ] **Migration plan generated and reviewed**
 - [ ] **Priority repositories identified**
@@ -144,7 +144,7 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ### Testing Strategy
 - [ ] **Test migration performed:**
   ```bash
-  python src/migrate.py --project "TestProject" --repo "test-repo" --dry-run --config config.json
+  azuredevops-github-migration migrate --project "TestProject" --repo "test-repo" --dry-run --config config.json
   ```
 - [ ] **Dry run results validated**
 - [ ] **Test repository successfully migrated**
@@ -217,7 +217,7 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ### Pre-Migration Testing
 - [ ] **Complete dry run performed:**
   ```bash
-  python src/migrate.py --project "RealProject" --repo "target-repo" --dry-run --debug --config config.json
+  azuredevops-github-migration migrate --project "RealProject" --repo "target-repo" --dry-run --debug --config config.json
   ```
 - [ ] **All validation checks passed**
 - [ ] **Performance within acceptable limits**
@@ -258,46 +258,46 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ### Validation Commands
 ```bash
 # Validate configuration and credentials
-python src/migrate.py --validate-only --config config.json
+azuredevops-github-migration migrate --validate-only --config config.json
 
 # List available projects and analyze
-python src/analyze.py --config config.json
+azuredevops-github-migration analyze --config config.json
 
 # Analyze specific project
-python src/analyze.py --project "MyProject" --config config.json
+azuredevops-github-migration analyze --project "MyProject" --config config.json
 ```
 
 ### Analysis Commands
 ```bash
 # Analyze organization and create migration plan
-python src/analyze.py --create-plan --config config.json
+azuredevops-github-migration analyze --create-plan --config config.json
 
 # Jira users (skip work items completely)
-python src/analyze.py --create-plan --config config.json --skip-work-items
+azuredevops-github-migration analyze --create-plan --config config.json --skip-work-items
 
 # Analyze specific project
-python src/analyze.py --project "MyProject" --config config.json
+azuredevops-github-migration analyze --project "MyProject" --config config.json
 
 # Generate CSV report
-python src/analyze.py --format csv --config config.json
+azuredevops-github-migration analyze --format csv --config config.json
 ```
 
 ### Testing Commands
 ```bash
 # Dry run single repository
-python src/migrate.py --project "MyProject" --repo "test-repo" --dry-run --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "test-repo" --dry-run --config config.json
 
 # Dry run batch migration
-python src/batch_migrate.py --dry-run --plan migration_plan.json --config config.json
+azuredevops-github-migration batch --dry-run --plan migration_plan.json --config config.json
 
 # Test with debug logging and additional flags
-python src/migrate.py --project "MyProject" --repo "test-repo" --dry-run --debug --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "test-repo" --dry-run --debug --config config.json
 
 # Test pipeline scope control
-python src/migrate.py --project "MyProject" --repo "test-repo" --pipelines-scope repository --dry-run --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "test-repo" --pipelines-scope repository --dry-run --config config.json
 
 # Test with remote verification
-python src/migrate.py --project "MyProject" --repo "test-repo" --verify-remote --dry-run --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "test-repo" --verify-remote --dry-run --config config.json
 ```
 
 ## ⚠️ Common Issues to Check

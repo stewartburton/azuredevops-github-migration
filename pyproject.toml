@@ -1,0 +1,190 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "azuredevops-github-migration"
+dynamic = ["version"]
+description = "A comprehensive production-ready tool for migrating repositories, work items, and pipelines from Azure DevOps to GitHub"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Stewart Burton", email = "stewart@example.com"}
+]
+maintainers = [
+    {name = "Stewart Burton", email = "stewart@example.com"}
+]
+keywords = [
+    "azure-devops",
+    "github", 
+    "migration",
+    "devops",
+    "git",
+    "ci-cd",
+    "pipeline",
+    "work-items",
+    "repository"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8", 
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: System :: Archiving :: Mirroring",
+    "Topic :: Utilities"
+]
+requires-python = ">=3.7"
+dependencies = [
+    "requests>=2.31.0",
+    "pyyaml>=6.0.1",
+    "html2text>=2020.1.16",
+    "markdown>=3.4.0",
+    "tqdm>=4.65.0",
+    "urllib3>=2.0.7"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "coverage>=7.0.0",
+    "flake8>=6.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.0.0",
+    "bandit>=1.7.0",
+    "safety>=2.3.0"
+]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0", 
+    "pytest-mock>=3.10.0",
+    "coverage>=7.0.0"
+]
+security = [
+    "bandit>=1.7.0",
+    "safety>=2.3.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/stewartburton/azuredevops-github-migration"
+Documentation = "https://github.com/stewartburton/azuredevops-github-migration/blob/main/docs/user-guide/HOW_TO_GUIDE.md"
+Repository = "https://github.com/stewartburton/azuredevops-github-migration"
+Issues = "https://github.com/stewartburton/azuredevops-github-migration/issues"
+Changelog = "https://github.com/stewartburton/azuredevops-github-migration/releases"
+
+[project.scripts]
+azuredevops-github-migration = "azuredevops_github_migration.cli:main"
+ado2gh-migrate = "azuredevops_github_migration.migrate:main"
+ado2gh-analyze = "azuredevops_github_migration.analyze:main"
+ado2gh-batch = "azuredevops_github_migration.batch_migrate:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "azuredevops_github_migration.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.package-data]
+"azuredevops_github_migration" = [
+    "*.json",
+    "*.yaml", 
+    "*.yml",
+    "*.md",
+    "templates/*"
+]
+
+# Black code formatting
+[tool.black]
+line-length = 88
+target-version = ['py37', 'py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+# isort import sorting  
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["azuredevops_github_migration"]
+
+# mypy type checking
+[tool.mypy]
+python_version = "3.7"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+# pytest configuration
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "--strict-markers",
+    "--disable-warnings",
+    "--tb=short",
+    "-ra"
+]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# coverage configuration
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "setup.py"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:"
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "build", "dist"]
+skips = ["B101", "B601"]

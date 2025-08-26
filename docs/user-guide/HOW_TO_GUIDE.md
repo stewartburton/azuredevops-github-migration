@@ -6,16 +6,16 @@
 > cp examples/jira-users-config.json config.json
 >
 > # 2. Analyze (skips & omits work items; creates plan)
-> python src/analyze.py --project "MyProject" --create-plan --config config.json --skip-work-items
+> azuredevops-github-migration analyze --project "MyProject" --create-plan --config config.json --skip-work-items
 >
 > # 3. Dry run a single repo
-> python src/migrate.py --project "MyProject" --repo "my-repo" --dry-run --config config.json
+> azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --dry-run --config config.json
 >
 > # 4. Migrate the repo (issues auto-disabled)
-> python src/migrate.py --project "MyProject" --repo "my-repo" --config config.json
+> azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --config config.json
 >
 > # 5. Batch migrate (plan has no migrate_issues fields)
-> python src/batch_migrate.py --plan migration_plan_<org>_*.json --config config.json
+> azuredevops-github-migration batch --plan migration_plan_<org>_*.json --config config.json
 > ```
 > `--skip-work-items` = no WIQL calls + no work item fields + later migrations treat repos as code-only.
 
@@ -50,7 +50,24 @@ Before you begin, ensure you have:
 
 ## Installation
 
-### Option 1: Automated Setup (Recommended)
+### Option 1: PyPI Installation (Recommended)
+
+```bash
+# Install from PyPI
+pip install azuredevops-github-migration
+
+# Verify installation
+azuredevops-github-migration --version
+
+# Initialize configuration (creates config.json and .env template)
+azuredevops-github-migration init --template jira-users    # For Jira users (most common)
+# OR
+azuredevops-github-migration init --template full          # Complete migration setup
+
+# Edit the created config.json and .env files with your settings
+```
+
+### Option 2: Automated Setup from Source
 
 ```bash
 # Clone the repository
@@ -68,11 +85,13 @@ The setup script will:
 - Set up configuration templates
 - Create necessary directories
 
-### Option 2: Manual Setup
+### Option 3: Development Setup
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Clone and install in development mode
+git clone https://github.com/stewartburton/azuredevops-github-migration.git
+cd azuredevops-github-migration
+pip install -e .
 
 # Choose your configuration template
 cp examples/jira-users-config.json config.json          # For Jira users
@@ -183,19 +202,19 @@ Before migrating, analyze what you have:
 
 ```bash
 # Validate your setup first
-python src/migrate.py --validate-only --config config.json
+azuredevops-github-migration migrate --validate-only --config config.json
 
 # Analyze entire organization
-python src/analyze.py --create-plan --config config.json
+azuredevops-github-migration analyze --create-plan --config config.json
 
 # Analyze specific project
-python src/analyze.py --project "MyProject" --create-plan --config config.json
+azuredevops-github-migration analyze --project "MyProject" --create-plan --config config.json
 
 # Jira mode (omit & skip work items)
-python src/analyze.py --project "MyProject" --create-plan --config config.json --skip-work-items
+azuredevops-github-migration analyze --project "MyProject" --create-plan --config config.json --skip-work-items
 
 # Export as CSV
-python src/analyze.py --format csv --config config.json
+azuredevops-github-migration analyze --format csv --config config.json
 ```
 
 This creates:
@@ -232,35 +251,35 @@ Example migration plan:
 # Basic migration commands
 
 # 1. Test migration (safe, no changes)
-python src/migrate.py --project "MyProject" --repo "my-repo" --dry-run --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --dry-run --config config.json
 
 # 2. Typical migration for Jira users (repository + pipelines only)
-python src/migrate.py --project "MyProject" --repo "my-repo" --no-issues --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --no-issues --config config.json
 
 # 3. With custom GitHub repository name
-python src/migrate.py --project "MyProject" --repo "my-repo" --github-repo "new-repo-name" --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --github-repo "new-repo-name" --config config.json
 
 # 4. Repository-only pipelines (instead of all project pipelines)
-python src/migrate.py --project "MyProject" --repo "my-repo" --pipelines-scope repository --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --pipelines-scope repository --config config.json
 
 # 5. Exclude disabled pipelines & verify remote branches post-push
-python src/migrate.py --project "MyProject" --repo "my-repo" --exclude-disabled-pipelines --verify-remote --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --exclude-disabled-pipelines --verify-remote --config config.json
 
 # 6. Full migration including work items (if not using Jira)
-python src/migrate.py --project "MyProject" --repo "my-repo" --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --config config.json
 ```
 
 ### Batch Migration
 
 ```bash
 # Create sample migration plan
-python src/batch_migrate.py --create-sample
+azuredevops-github-migration batch --create-sample
 
 # Test with dry run first (uses default plan name)
-python src/batch_migrate.py --dry-run --config config.json
+azuredevops-github-migration batch --dry-run --config config.json
 
 # Execute batch migration with explicit plan
-python src/batch_migrate.py --plan migration_plan.json --config config.json
+azuredevops-github-migration batch --plan migration_plan.json --config config.json
 ```
 
 ### Monitor Progress
@@ -331,19 +350,19 @@ If you're using Jira for issue tracking and only need to migrate Git repositorie
 cp examples/jira-users-config.json config.json
 
 # Analyze without querying work item data
-python src/analyze.py --project "MyProject" --create-plan --config config.json --skip-work-items
+azuredevops-github-migration analyze --project "MyProject" --create-plan --config config.json --skip-work-items
 
 # Dry run a repo (issue migration auto-disabled; no need for --no-issues)
-python src/migrate.py --project "MyProject" --repo "my-repo" --dry-run --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --dry-run --config config.json
 
 # Actual migration (issues suppressed automatically)
-python src/migrate.py --project "MyProject" --repo "my-repo" --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --config config.json
 
 # Batch dry run (plan produced by --skip-work-items omits migrate_issues fields)
-python src/batch_migrate.py --plan migration_plan_<org>_*.json --dry-run --config config.json
+azuredevops-github-migration batch --plan migration_plan_<org>_*.json --dry-run --config config.json
 
 # Batch execute
-python src/batch_migrate.py --plan migration_plan_<org>_*.json --config config.json
+azuredevops-github-migration batch --plan migration_plan_<org>_*.json --config config.json
 ```
 
 **What you get:**
@@ -356,13 +375,13 @@ python src/batch_migrate.py --plan migration_plan_<org>_*.json --config config.j
 
 ```bash
 # Repository-specific pipelines only (not all project pipelines)
-python src/migrate.py --project "MyProject" --repo "my-repo" --pipelines-scope repository --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --pipelines-scope repository --config config.json
 
 # Exclude disabled/paused pipelines
-python src/migrate.py --project "MyProject" --repo "my-repo" --exclude-disabled-pipelines --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --exclude-disabled-pipelines --config config.json
 
 # Combine multiple flags for precision
-python src/migrate.py --project "MyProject" --repo "my-repo" \
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" \
     --pipelines-scope repository --exclude-disabled-pipelines --verify-remote --dry-run --config config.json
 ```
 
@@ -370,12 +389,12 @@ python src/migrate.py --project "MyProject" --repo "my-repo" \
 
 ```bash
 # 1. Start with analysis
-python src/analyze.py --create-plan --config config.json
+azuredevops-github-migration analyze --create-plan --config config.json
 
 # 2. Edit the generated plan to prioritize critical repositories
 # 3. Run migration in batches
-python src/batch_migrate.py --plan high_priority_repos.json --config config.json
-python src/batch_migrate.py --plan medium_priority_repos.json --config config.json
+azuredevops-github-migration batch --plan high_priority_repos.json --config config.json
+azuredevops-github-migration batch --plan medium_priority_repos.json --config config.json
 ```
 
 ### Scenario 4: Selective Repository Migration
@@ -399,7 +418,7 @@ cat > custom_plan.json << 'EOF'
 ]
 EOF
 
-python src/batch_migrate.py --plan custom_plan.json --config config.json
+azuredevops-github-migration batch --plan custom_plan.json --config config.json
 ```
 
 ### Scenario 5: Work Items Only Migration
@@ -408,7 +427,7 @@ If you only want to migrate work items to issues (no Git repositories):
 
 ```bash
 # Configure for work items only
-python src/migrate.py --project "MyProject" --repo "my-repo" --no-git --no-pipelines --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --no-git --no-pipelines --config config.json
 ```
 
 Or in your config.json:
@@ -522,20 +541,20 @@ Exclude specific repositories or work items:
 
 ```bash
 # Validate your setup
-python src/migrate.py --validate-only --config config.json
+azuredevops-github-migration migrate --validate-only --config config.json
 
 # Test with dry run
-python src/migrate.py --project "MyProject" --repo "test-repo" --dry-run --config config.json
+azuredevops-github-migration migrate --project "MyProject" --repo "test-repo" --dry-run --config config.json
 
 # Verify tokens work by running analysis
-python src/analyze.py --project "MyProject" --config config.json
+azuredevops-github-migration analyze --project "MyProject" --config config.json
 ```
 
 ### Post-Migration Validation
 
 ```bash
 # Compare repository statistics
-python src/analyze.py --project "MyProject" --config config.json > before_migration.txt
+azuredevops-github-migration analyze --project "MyProject" --config config.json > before_migration.txt
 # After migration, check GitHub repository for equivalent data
 
 # Verify migration reports
@@ -600,20 +619,20 @@ cp examples/jira-users-config.json config.json  # For Jira users (most common)
 # Edit config.json and .env files
 
 # 3. Validate
-python src/migrate.py --validate-only --config config.json
+azuredevops-github-migration migrate --validate-only --config config.json
 
 # 4. Analyze
-python src/analyze.py --create-plan --config config.json
+azuredevops-github-migration analyze --create-plan --config config.json
 # For Jira users: add --skip-work-items flag
 
 # 5. Plan
 # Edit the generated migration plan
 
 # 6. Test
-python src/batch_migrate.py --dry-run --plan migration_plan.json --config config.json
+azuredevops-github-migration batch --dry-run --plan migration_plan.json --config config.json
 
 # 7. Execute
-python src/batch_migrate.py --plan migration_plan.json --config config.json
+azuredevops-github-migration batch --plan migration_plan.json --config config.json
 
 # 8. Verify
 # Check GitHub repositories and issues (if enabled)

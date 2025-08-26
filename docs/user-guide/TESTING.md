@@ -63,16 +63,16 @@ Test authentication with various credential scenarios:
 
 ```bash
 # Valid credentials
-python src/migrate.py --validate-only --config config.json
+azuredevops-github-migration migrate --validate-only --config config.json
 
 # Invalid Azure DevOps PAT
-python src/migrate.py --validate-only --config invalid_azure_config.json
+azuredevops-github-migration migrate --validate-only --config invalid_azure_config.json
 
 # Invalid GitHub token
-python src/migrate.py --validate-only --config invalid_github_config.json
+azuredevops-github-migration migrate --validate-only --config invalid_github_config.json
 
 # Missing organization access
-python src/migrate.py --validate-only --config no_access_config.json
+azuredevops-github-migration migrate --validate-only --config no_access_config.json
 ```
 
 **Expected Results:**
@@ -85,22 +85,22 @@ Test complete migration flow without making changes:
 
 ```bash
 # Small repository dry run
-python src/migrate.py --project "TestProject" --repo "small-repo" --dry-run --config config.json
+azuredevops-github-migration migrate --project "TestProject" --repo "small-repo" --dry-run --config config.json
 
 # Large repository dry run  
-python src/migrate.py --project "TestProject" --repo "large-repo" --dry-run --config config.json
+azuredevops-github-migration migrate --project "TestProject" --repo "large-repo" --dry-run --config config.json
 
 # Repository with work items and pipelines
-python src/migrate.py --project "TestProject" --repo "full-repo" --dry-run --config config.json
+azuredevops-github-migration migrate --project "TestProject" --repo "full-repo" --dry-run --config config.json
 
 # Jira users (work items automatically disabled)
-python src/migrate.py --project "TestProject" --repo "jira-repo" --dry-run --config examples/jira-users-config.json
+azuredevops-github-migration migrate --project "TestProject" --repo "jira-repo" --dry-run --config examples/jira-users-config.json
 
 # Pipeline scope control testing
-python src/migrate.py --project "TestProject" --repo "test-repo" --pipelines-scope repository --dry-run --config config.json
+azuredevops-github-migration migrate --project "TestProject" --repo "test-repo" --pipelines-scope repository --dry-run --config config.json
 
 # Remote verification testing
-python src/migrate.py --project "TestProject" --repo "test-repo" --verify-remote --dry-run --config config.json
+azuredevops-github-migration migrate --project "TestProject" --repo "test-repo" --verify-remote --dry-run --config config.json
 ```
 
 **Verify:**
@@ -250,7 +250,7 @@ python migrate.py \
 #### Concurrent Migration Testing
 ```bash
 # Test multiple migrations simultaneously
-python batch_migrate.py \
+azuredevops-github-migration batch \
   --plan concurrent_test_plan.json \
   --dry-run
 ```
@@ -266,7 +266,7 @@ python batch_migrate.py \
   }
 }
 
-python src/migrate.py --project "Test" --repo "test" --dry-run --debug --config test_config.json
+azuredevops-github-migration migrate --project "Test" --repo "test" --dry-run --debug --config test_config.json
 ```
 
 ## Security Testing
@@ -276,7 +276,7 @@ python src/migrate.py --project "Test" --repo "test" --dry-run --debug --config 
 1. **Log File Analysis:**
    ```bash
    # Run migration and check logs for credential exposure
-   python src/migrate.py --project "Test" --repo "test" --dry-run --debug --config config.json
+   azuredevops-github-migration migrate --project "Test" --repo "test" --dry-run --debug --config config.json
    grep -i "pat\|token\|password" migration.log
    # Should find no exposed credentials
    ```

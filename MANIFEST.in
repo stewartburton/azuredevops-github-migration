@@ -1,0 +1,44 @@
+# Include documentation files
+include README.md
+include LICENSE
+include requirements.txt
+include CHANGELOG.md
+
+# Include configuration templates and examples
+recursive-include config *.json *.yaml *.yml
+recursive-include examples *.json *.yaml *.yml
+
+# Include documentation
+recursive-include docs *.md *.rst *.txt
+
+# Include scripts
+recursive-include scripts *.sh *.bat *.py
+
+# Include GitHub workflows
+recursive-include .github *.yml *.yaml
+
+# Exclude test files and development artifacts
+recursive-exclude tests *
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * *.orig
+recursive-exclude * *.rej
+exclude .coverage
+exclude .tox
+exclude .cache
+exclude .pytest_cache
+exclude *.egg-info
+exclude build
+exclude dist
+exclude .git*
+exclude .DS_Store
+exclude Thumbs.db
+exclude migration.log
+exclude *.tmp
+exclude *.swp
+exclude *~
+
+# Include package data
+global-include *.json
+global-include *.yaml
+global-include *.yml

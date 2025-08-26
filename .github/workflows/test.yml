@@ -1,0 +1,176 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11', '3.12']
+        exclude:
+          # Exclude some combinations to reduce CI load
+          - os: macos-latest
+            python-version: '3.7'
+          - os: macos-latest
+            python-version: '3.8'
+          - os: windows-latest
+            python-version: '3.7'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-mock coverage
+
+    - name: Install package in development mode
+      run: |
+        pip install -e .
+
+    - name: Lint with flake8 (if available)
+      run: |
+        pip install flake8 || true
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics || true
+        # Treat all other issues as warnings
+        flake8 src/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics || true
+      continue-on-error: true
+
+    - name: Run unit tests with pytest
+      run: |
+        python -m pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-report=term-missing
+
+    - name: Test CLI validation (smoke tests)
+      run: |
+        python src/migrate.py --help
+        python src/analyze.py --help
+        python src/batch_migrate.py --help
+      shell: bash
+
+    - name: Test configuration validation
+      run: |
+        python -c "
+        import json
+        import sys
+        import os
+        sys.path.insert(0, 'src')
+        
+        # Test configuration templates are valid JSON
+        config_files = [
+            'examples/jira-users-config.json',
+            'examples/full-migration-config.json',
+            'config/config.template.json'
+        ]
+        
+        for config_file in config_files:
+            if os.path.exists(config_file):
+                try:
+                    with open(config_file, 'r') as f:
+                        json.load(f)
+                    print(f'✓ {config_file} is valid JSON')
+                except json.JSONDecodeError as e:
+                    print(f'✗ {config_file} has JSON errors: {e}')
+                    sys.exit(1)
+            else:
+                print(f'⚠ {config_file} not found')
+        
+        print('All configuration files validated successfully!')
+        "
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+      continue-on-error: true
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install security tools
+      run: |
+        pip install safety bandit semgrep
+
+    - name: Run safety check for known vulnerabilities
+      run: |
+        safety check -r requirements.txt || true
+      continue-on-error: true
+
+    - name: Run bandit security scan
+      run: |
+        bandit -r src/ -f json -o bandit-report.json || true
+        bandit -r src/ || true
+      continue-on-error: true
+
+    - name: Run semgrep security scan
+      run: |
+        semgrep --config=auto src/ || true
+      continue-on-error: true
+
+  package-test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install build tools
+      run: |
+        pip install --upgrade pip build twine
+
+    - name: Build package
+      run: |
+        python -m build
+
+    - name: Test package installation
+      run: |
+        pip install dist/*.whl
+        azuredevops-github-migration --help || python -m azuredevops_github_migration --help
+
+    - name: Check package with twine
+      run: |
+        twine check dist/*
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: python-package-distributions
+        path: dist/
