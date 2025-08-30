@@ -37,6 +37,7 @@ This comprehensive guide will walk you through the entire process of migrating y
 12. [Best Practices](#best-practices)
 13. [Troubleshooting](#troubleshooting)
 14. [Example End-to-End Workflow](#example-end-to-end-workflow)
+15. [Configuring Azure DevOps Pipelines for GitHub](#configuring-azure-devops-pipelines-for-github)
 
 ## Prerequisites
 
@@ -327,7 +328,12 @@ In GitHub, check:
 
 ### 4. Update Team Workflows
 
-- Update CI/CD pipelines to point to GitHub
+- **Update CI/CD pipelines to point to GitHub**: This is a critical step that requires detailed configuration. See the comprehensive [Configuring Azure DevOps Pipelines for GitHub](#configuring-azure-devops-pipelines-for-github) section below for step-by-step instructions on:
+  - Creating GitHub service connections
+  - Updating pipeline repository sources  
+  - Configuring variable groups and environments
+  - Testing and validating pipeline configurations
+  - Bulk updating hundreds of pipelines safely
 - Update documentation links
 - Notify team members of the new repository location
 - Update any integrations or webhooks
@@ -640,6 +646,934 @@ azuredevops-github-migration batch --plan migration_plan.json --config config.js
 ```
 
 This completes the migration process. Your Azure DevOps repositories and work items should now be successfully migrated to GitHub!
+
+---
+
+## Configuring Azure DevOps Pipelines for GitHub
+
+After migrating your repositories from Azure DevOps to GitHub, you need to reconfigure your Azure DevOps pipelines to point to the new GitHub repository locations. This section provides comprehensive, step-by-step instructions for updating build pipelines, build & release pipelines, libraries, environments, and variables.
+
+### Overview
+
+Azure DevOps pipelines can continue to run against GitHub repositories with proper configuration. The key components that need updating are:
+
+- **Pipeline repository sources** - Point to GitHub instead of Azure Repos
+- **Service connections** - Authenticate with GitHub
+- **Variable groups** - Update any repository-specific variables
+- **Pipeline libraries** - Ensure proper access to shared resources
+- **Environments** - Verify deployment target configurations
+- **Branch policies** - Update if referencing specific repository paths
+
+### Prerequisites
+
+Before configuring pipelines, ensure you have:
+
+- **Administrative access** to your Azure DevOps organization
+- **Project Administrator** permissions for relevant projects
+- **GitHub repository access** with appropriate permissions
+- **Service Connection Administrator** role (if creating new connections)
+- **Completed repository migration** to GitHub
+- **GitHub Personal Access Token** with appropriate scopes
+
+### Step 1: Create GitHub Service Connection
+
+Each project needs a service connection to GitHub for pipeline authentication.
+
+#### 1.1 Navigate to Service Connections
+
+1. Go to your Azure DevOps organization: `https://dev.azure.com/{your-organization}`
+2. Select the project containing your pipelines
+3. Navigate to **Project Settings** (bottom-left gear icon)
+4. Under **Pipelines**, select **Service connections**
+
+#### 1.2 Create New GitHub Service Connection
+
+1. Click **New service connection**
+2. Select **GitHub** from the list
+3. Choose authentication method:
+   - **GitHub App** (Recommended for organizations)
+   - **Personal Access Token** (Individual repositories)
+   - **OAuth** (Interactive authentication)
+
+#### 1.3 Configure GitHub App Authentication (Recommended)
+
+1. Select **GitHub App**
+2. Click **Install GitHub App** 
+3. You'll be redirected to GitHub to install the Azure Pipelines app
+4. Select the organization/repositories you want to grant access to
+5. Return to Azure DevOps and complete the connection setup
+6. **Service connection name**: Use a descriptive name like `GitHub-{OrgName}-Connection`
+7. **Description**: `GitHub connection for migrated repositories`
+8. Click **Save**
+
+#### 1.4 Configure Personal Access Token Authentication
+
+If using PAT authentication:
+
+1. Select **Personal Access Token**
+2. **Server URL**: `https://github.com`
+3. **Personal Access Token**: Enter your GitHub PAT with these scopes:
+   - `repo` (Full control of private repositories)
+   - `admin:repo_hook` (Admin access to repository hooks) 
+   - `read:org` (Read org membership)
+4. **Service connection name**: `GitHub-PAT-Connection`
+5. Click **Verify and save**
+
+### Step 2: Update Pipeline Repository Sources
+
+For each pipeline that needs to point to GitHub:
+
+#### 2.1 Navigate to Pipeline
+
+1. Go to **Pipelines** > **Pipelines**
+2. Select the pipeline you need to update
+3. Click **Edit**
+
+#### 2.2 Update YAML Pipeline Repository
+
+For YAML pipelines:
+
+1. In the pipeline editor, locate the `resources` section or add one:
+
+```yaml
+resources:
+  repositories:
+  - repository: self
+    type: git
+    connection: GitHub-{OrgName}-Connection  # Your service connection name
+    name: {github-org}/{repo-name}
+    ref: refs/heads/main  # or your default branch
+```
+
+2. If the pipeline uses multiple repositories, update each one:
+
+```yaml
+resources:
+  repositories:
+  - repository: primary-repo
+    type: git
+    connection: GitHub-{OrgName}-Connection
+    name: {github-org}/{primary-repo-name}
+  - repository: shared-libs
+    type: git
+    connection: GitHub-{OrgName}-Connection
+    name: {github-org}/{shared-libraries-repo}
+```
+
+3. Update any checkout steps:
+
+```yaml
+steps:
+- checkout: self
+- checkout: shared-libs  # If using multiple repositories
+```
+
+#### 2.3 Update Classic Pipeline Repository
+
+For Classic (visual) pipelines:
+
+1. In pipeline editor, go to **Get sources** tab
+2. Change **Source type** from **Azure Repos Git** to **GitHub**
+3. **Service connection**: Select your GitHub service connection
+4. **Repository**: Select the migrated repository
+5. **Default branch**: Update to match your GitHub repository's default branch
+6. **Clean**: Set to `true` if you want clean checkouts
+7. Click **Save**
+
+#### 2.4 Update Trigger Settings
+
+Update repository triggers:
+
+1. In pipeline editor, go to **Triggers** tab
+2. **Continuous integration**: 
+   - Enable if you want builds on code changes
+   - Update **Branch filters** to match GitHub branch names
+3. **Pull request validation**:
+   - Enable if you want PR builds
+   - Update **Branch filters** for PR target branches
+4. **Path filters**: Update any path-based triggers if repository structure changed
+
+### Step 3: Update Variable Groups and Libraries
+
+#### 3.1 Review Variable Groups
+
+1. Navigate to **Pipelines** > **Library**
+2. For each Variable Group used by your pipelines:
+   - Click on the Variable Group name
+   - Review variables for repository-specific references
+   - Update any variables containing:
+     - Repository URLs
+     - Branch names
+     - File paths
+     - Service endpoints
+
+#### 3.2 Update Repository-Specific Variables
+
+Common variables to update:
+
+```
+# Before (Azure DevOps)
+REPO_URL = https://dev.azure.com/{org}/{project}/_git/{repo}
+BUILD_REPOSITORY_URI = https://dev.azure.com/{org}/{project}/_git/{repo}
+SYSTEM_TEAMFOUNDATIONCOLLECTIONURI = https://dev.azure.com/{org}/
+
+# After (GitHub)
+REPO_URL = https://github.com/{org}/{repo}
+BUILD_REPOSITORY_URI = https://github.com/{org}/{repo}.git
+GITHUB_REPOSITORY = {org}/{repo}
+```
+
+#### 3.3 Update Pipeline Permissions
+
+1. In Variable Group settings, verify **Pipeline permissions**
+2. Ensure all relevant pipelines have access
+3. Update **Security** settings if needed
+
+### Step 4: Update Build and Release Pipelines
+
+#### 4.1 Build Pipelines
+
+For each build pipeline:
+
+1. **Repository Configuration**: Follow Step 2 above
+2. **Build Tasks**: Review tasks that reference repository paths:
+   - **Copy Files** tasks with source paths
+   - **PowerShell/Bash** scripts with hardcoded paths  
+   - **Docker** tasks with context paths
+3. **Artifacts**: Verify artifact publishing paths are still valid
+4. **Test Results**: Update test result file paths if changed
+
+#### 4.2 Release Pipelines
+
+For each release pipeline:
+
+1. **Artifacts**: 
+   - If using repository artifacts, update source repository
+   - Update **Default version** settings
+   - Verify **Continuous deployment triggers**
+2. **Stages**: Review each deployment stage:
+   - Update any repository checkout tasks
+   - Verify file copy operations
+   - Update configuration file paths
+3. **Variables**: Update stage-specific variables referencing repositories
+
+### Step 5: Update Environments and Approvals
+
+#### 5.1 Review Environments
+
+1. Navigate to **Pipelines** > **Environments**
+2. For each environment used by your pipelines:
+   - Verify **Approvals and checks** still reference correct resources
+   - Update any **Branch control** policies to use GitHub branches
+   - Review **Security** settings for correct permissions
+
+#### 5.2 Update Branch Policies
+
+If using branch policies that reference repositories:
+
+1. **Business hours**: Ensure time zones are appropriate
+2. **Required reviewers**: Update if reviewer access has changed
+3. **Build validation**: Point to updated pipelines
+
+### Step 6: Test Pipeline Configuration
+
+#### 6.1 Pipeline Validation Test
+
+Create a comprehensive test to validate your pipeline configuration:
+
+```yaml
+# pipeline-validation-test.yml
+name: Pipeline Configuration Validation
+
+trigger: none  # Manual trigger only for testing
+
+variables:
+  - group: shared-variables  # Your updated variable group
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: ValidationTests
+  displayName: 'Validate Pipeline Configuration'
+  jobs:
+  - job: RepositoryValidation
+    displayName: 'Repository Access Validation'
+    steps:
+    
+    # Test 1: Repository Checkout
+    - checkout: self
+      displayName: 'Test Repository Checkout'
+      
+    # Test 2: Verify Repository URL
+    - bash: |
+        echo "Repository URL: $(Build.Repository.Uri)"
+        echo "Repository Name: $(Build.Repository.Name)"
+        echo "Branch: $(Build.SourceBranchName)"
+        echo "Commit: $(Build.SourceVersion)"
+        
+        # Verify we're connected to GitHub
+        if [[ "$(Build.Repository.Uri)" == *"github.com"* ]]; then
+          echo "✓ Repository correctly points to GitHub"
+        else
+          echo "✗ Repository does not point to GitHub"
+          exit 1
+        fi
+      displayName: 'Validate Repository Connection'
+      
+    # Test 3: File System Verification
+    - bash: |
+        echo "Current directory contents:"
+        ls -la
+        
+        # Test if we can access expected files
+        if [ -f "README.md" ] || [ -f "readme.md" ]; then
+          echo "✓ Repository files accessible"
+        else
+          echo "⚠ No README found - verify repository structure"
+        fi
+        
+        echo "Git status:"
+        git status
+        git remote -v
+      displayName: 'Verify Repository Files'
+      
+    # Test 4: Variable Group Access
+    - bash: |
+        echo "Testing variable group access..."
+        # Replace these with your actual variables
+        echo "Sample variable value: $(YourVariableName)"
+        
+        if [ -n "$(YourVariableName)" ]; then
+          echo "✓ Variable group accessible"
+        else
+          echo "✗ Variable group not accessible"
+          exit 1
+        fi
+      displayName: 'Test Variable Group Access'
+      
+    # Test 5: Service Connection Test
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: |
+          Write-Host "Service Connection Test"
+          Write-Host "Repository Provider: $(Build.Repository.Provider)"
+          Write-Host "Repository ID: $(Build.Repository.ID)"
+          
+          if ("$(Build.Repository.Provider)" -eq "GitHub") {
+            Write-Host "✓ Service connection working correctly"
+          } else {
+            Write-Host "✗ Service connection issue detected"
+            exit 1
+          }
+      displayName: 'Test Service Connection'
+
+  - job: ArtifactTest
+    displayName: 'Artifact and Build Output Test'
+    steps:
+    - checkout: self
+    
+    # Test 6: Build Output Creation
+    - bash: |
+        mkdir -p $(Build.ArtifactStagingDirectory)/test-artifacts
+        echo "Test build output" > $(Build.ArtifactStagingDirectory)/test-artifacts/build-test.txt
+        echo "Build completed successfully" > $(Build.ArtifactStagingDirectory)/test-artifacts/status.log
+      displayName: 'Create Test Artifacts'
+      
+    # Test 7: Publish Test Artifacts
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)/test-artifacts'
+        artifactName: 'ValidationTestArtifacts'
+        publishLocation: 'Container'
+      displayName: 'Test Artifact Publishing'
+      
+    # Test 8: Test Results Publishing (if applicable)
+    - bash: |
+        mkdir -p test-results
+        echo '<?xml version="1.0" encoding="UTF-8"?>
+        <testsuites>
+          <testsuite name="ValidationTests" tests="1" failures="0">
+            <testcase name="ConfigurationTest" />
+          </testsuite>
+        </testsuites>' > test-results/validation-results.xml
+      displayName: 'Generate Mock Test Results'
+      
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: 'test-results/validation-results.xml'
+        testRunTitle: 'Pipeline Validation Tests'
+      displayName: 'Test Result Publishing'
+
+- stage: EnvironmentTest
+  displayName: 'Environment Configuration Test'
+  dependsOn: ValidationTests
+  condition: succeeded()
+  jobs:
+  - deployment: TestDeployment
+    displayName: 'Test Environment Access'
+    environment: 'development'  # Replace with your environment name
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - bash: |
+              echo "✓ Environment deployment test successful"
+              echo "Environment: $(Environment.Name)"
+              echo "Resource: $(Environment.ResourceName)"
+            displayName: 'Environment Connectivity Test'
+```
+
+#### 6.2 Running the Validation Test
+
+1. **Create the test pipeline**:
+   - Save the above YAML as `pipeline-validation-test.yml` in your repository
+   - Create a new pipeline in Azure DevOps using this YAML file
+
+2. **Update the test configuration**:
+   - Replace `shared-variables` with your actual variable group name
+   - Replace `YourVariableName` with a variable from your variable group
+   - Replace `development` with your actual environment name
+   - Add additional tests specific to your pipeline requirements
+
+3. **Run the test**:
+   - Manually trigger the validation pipeline
+   - Monitor the output for any failures
+   - Review the test results and artifacts
+
+4. **Interpret results**:
+   - ✓ Green checkmarks indicate successful configuration
+   - ✗ Red X marks indicate configuration issues that need attention
+   - ⚠ Warnings indicate potential issues to investigate
+
+#### 6.3 Production Pipeline Testing
+
+After validation tests pass:
+
+1. **Incremental testing**: Test one production pipeline at a time
+2. **Monitor first runs**: Closely monitor initial production pipeline runs
+3. **Rollback plan**: Keep original pipeline configurations available for quick rollback
+4. **Team communication**: Notify team of pipeline changes and testing schedule
+
+### Step 7: Batch Pipeline Updates
+
+For organizations with hundreds of pipelines, use these strategies:
+
+#### 7.1 PowerShell Automation Script
+
+Create a script to update multiple pipelines programmatically:
+
+```powershell
+# bulk-pipeline-update.ps1
+param(
+    [string]$Organization = "your-org",
+    [string]$Project = "your-project",
+    [string]$PAT = $env:AZURE_DEVOPS_PAT,
+    [string]$GitHubServiceConnection = "GitHub-Connection",
+    [string]$GitHubOrg = "your-github-org",
+    
+    # Subset filtering options
+    [string[]]$PipelineNames = @(),           # Specific pipeline names to update
+    [string[]]$PipelineIds = @(),             # Specific pipeline IDs to update
+    [string]$NamePattern = "",                # Pattern to match pipeline names (e.g., "*api*", "prod-*")
+    [int]$MaxPipelines = 0,                   # Maximum number of pipelines to process (0 = all)
+    [switch]$TestMode = $false,               # Test mode - only show what would be updated
+    [string]$LogFile = "pipeline-update-log.txt"  # Log file for tracking changes
+)
+
+# Set up authentication
+$base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($PAT)"))
+$headers = @{Authorization = ("Basic {0}" -f $base64AuthInfo)}
+
+# Initialize logging
+$timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+$logPath = "$LogFile.$timestamp"
+$updateLog = @()
+
+function Write-LogEntry {
+    param($Message, $Color = "White")
+    $logEntry = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'): $Message"
+    Write-Host $logEntry -ForegroundColor $Color
+    $script:updateLog += $logEntry
+}
+
+# Get all pipelines
+$pipelinesUrl = "https://dev.azure.com/$Organization/$Project/_apis/pipelines?api-version=6.0"
+$allPipelines = Invoke-RestMethod -Uri $pipelinesUrl -Headers $headers -Method Get
+
+Write-LogEntry "Found $($allPipelines.count) total pipelines in project"
+
+# Filter pipelines based on criteria
+$filteredPipelines = $allPipelines.value
+
+# Apply specific pipeline ID filter
+if ($PipelineIds.Count -gt 0) {
+    $filteredPipelines = $filteredPipelines | Where-Object { $_.id -in $PipelineIds }
+    Write-LogEntry "Filtered by IDs: $($PipelineIds -join ', ') - $($filteredPipelines.Count) pipelines match"
+}
+
+# Apply specific pipeline name filter
+if ($PipelineNames.Count -gt 0) {
+    $filteredPipelines = $filteredPipelines | Where-Object { $_.name -in $PipelineNames }
+    Write-LogEntry "Filtered by names: $($PipelineNames -join ', ') - $($filteredPipelines.Count) pipelines match"
+}
+
+# Apply name pattern filter
+if ($NamePattern) {
+    $filteredPipelines = $filteredPipelines | Where-Object { $_.name -like $NamePattern }
+    Write-LogEntry "Filtered by pattern '$NamePattern' - $($filteredPipelines.Count) pipelines match"
+}
+
+# Apply max pipelines limit
+if ($MaxPipelines -gt 0 -and $filteredPipelines.Count -gt $MaxPipelines) {
+    $filteredPipelines = $filteredPipelines | Select-Object -First $MaxPipelines
+    Write-LogEntry "Limited to first $MaxPipelines pipelines"
+}
+
+Write-LogEntry "Processing $($filteredPipelines.Count) pipelines..." -Color "Cyan"
+
+if ($TestMode) {
+    Write-LogEntry "=== TEST MODE - NO CHANGES WILL BE MADE ===" -Color "Yellow"
+}
+
+$processedCount = 0
+$updatedCount = 0
+$errorCount = 0
+
+foreach ($pipeline in $filteredPipelines) {
+    $processedCount++
+    Write-LogEntry "[$processedCount/$($filteredPipelines.Count)] Processing pipeline: $($pipeline.name) (ID: $($pipeline.id))"
+    
+    try {
+        # Get pipeline definition
+        $pipelineUrl = "https://dev.azure.com/$Organization/$Project/_apis/pipelines/$($pipeline.id)?api-version=6.0"
+        $pipelineDetail = Invoke-RestMethod -Uri $pipelineUrl -Headers $headers -Method Get
+        
+        # Check if pipeline uses Azure Repos
+        if ($pipelineDetail.configuration.repository.type -eq "azureReposGit") {
+            Write-LogEntry "  - Pipeline uses Azure Repos, needs updating" -Color "White"
+            
+            if ($TestMode) {
+                Write-LogEntry "  - [TEST MODE] Would update repository source to GitHub" -Color "Yellow"
+                $updatedCount++
+            } else {
+                # Update repository configuration
+                $originalRepoName = $pipelineDetail.configuration.repository.name
+                $pipelineDetail.configuration.repository.type = "gitHub"
+                $pipelineDetail.configuration.repository.connection.id = $GitHubServiceConnection
+                
+                # Extract repo name from current URL and map to GitHub
+                $currentRepoName = $pipelineDetail.configuration.repository.name.Split('/')[-1]
+                $pipelineDetail.configuration.repository.name = "$GitHubOrg/$currentRepoName"
+                
+                Write-LogEntry "  - Updating: $originalRepoName -> $GitHubOrg/$currentRepoName"
+                
+                # Update pipeline
+                $updateUrl = "https://dev.azure.com/$Organization/$Project/_apis/pipelines/$($pipeline.id)?api-version=6.0"
+                Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Put -Body ($pipelineDetail | ConvertTo-Json -Depth 10) -ContentType "application/json"
+                Write-LogEntry "  ✓ Pipeline updated successfully" -Color "Green"
+                $updatedCount++
+            }
+        }
+        else {
+            Write-LogEntry "  - Pipeline already configured for non-Azure Repos source (Type: $($pipelineDetail.configuration.repository.type))" -Color "Yellow"
+        }
+    }
+    catch {
+        $errorCount++
+        Write-LogEntry "  ✗ Failed to update pipeline: $($_.Exception.Message)" -Color "Red"
+    }
+    
+    # Small delay to avoid overwhelming the API
+    Start-Sleep -Milliseconds 500
+}
+
+# Summary
+Write-LogEntry "" 
+Write-LogEntry "=== UPDATE SUMMARY ===" -Color "Cyan"
+Write-LogEntry "Pipelines processed: $processedCount" -Color "White"
+Write-LogEntry "Pipelines updated: $updatedCount" -Color "Green"
+Write-LogEntry "Errors encountered: $errorCount" -Color $(if($errorCount -gt 0) {"Red"} else {"Green"})
+
+if ($TestMode) {
+    Write-LogEntry "NOTE: Test mode was enabled - no actual changes were made" -Color "Yellow"
+}
+
+# Save log to file
+$updateLog | Out-File -FilePath $logPath -Encoding UTF8
+Write-LogEntry "Log saved to: $logPath" -Color "Cyan"
+```
+
+#### 7.2 Using the Script with Subset Filtering
+
+1. **Prepare environment**:
+   ```powershell
+   # Set environment variables
+   $env:AZURE_DEVOPS_PAT = "your-pat-token"
+   ```
+
+2. **Test with specific pipelines first**:
+   ```powershell
+   # Test mode - see what would be updated without making changes
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org" -TestMode
+   
+   # Update only specific pipelines by name
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org" `
+       -PipelineNames @("MyApp-CI", "MyApp-Release", "Database-Migration")
+   
+   # Update only specific pipelines by ID
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org" `
+       -PipelineIds @(123, 456, 789)
+   ```
+
+3. **Pattern-based filtering**:
+   ```powershell
+   # Update all pipelines containing "api" in their name
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org" `
+       -NamePattern "*api*"
+   
+   # Update all production pipelines
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org" `
+       -NamePattern "prod-*"
+   
+   # Update all development/test pipelines
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org" `
+       -NamePattern "*dev*", "*test*"
+   ```
+
+4. **Limit number of pipelines processed**:
+   ```powershell
+   # Process only first 5 pipelines (good for initial testing)
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org" `
+       -MaxPipelines 5
+   
+   # Test mode with first 10 pipelines
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org" `
+       -MaxPipelines 10 -TestMode
+   ```
+
+5. **Recommended phased approach**:
+   ```powershell
+   # Phase 1: Test mode to see what would be changed
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org" `
+       -TestMode -MaxPipelines 10
+   
+   # Phase 2: Update 5 non-critical pipelines
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org" `
+       -NamePattern "*dev*" -MaxPipelines 5
+   
+   # Phase 3: Update test/staging pipelines
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org" `
+       -NamePattern "*test*", "*staging*"
+   
+   # Phase 4: Update production pipelines (after validation)
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org" `
+       -NamePattern "*prod*"
+   
+   # Phase 5: Update remaining pipelines
+   .\bulk-pipeline-update.ps1 -Organization "your-org" -Project "your-project" -GitHubOrg "your-github-org"
+   ```
+
+6. **Logging and tracking**:
+   ```powershell
+   # Custom log file name
+   .\bulk-pipeline-update.ps1 -LogFile "pipeline-migration-phase1"
+   
+   # The script automatically timestamps log files:
+   # pipeline-migration-phase1.2024-01-15_14-30-22
+   ```
+
+### Step 7: Monitoring and Validation
+
+#### 7.1 Pipeline Run Monitoring
+
+After updating pipelines, monitor for:
+
+- **Build success rates**: Compare pre/post migration success rates
+- **Build duration**: Monitor for performance changes
+- **Artifact publishing**: Ensure artifacts are being created correctly
+- **Test execution**: Verify test results are being published
+- **Deployment success**: Monitor release pipeline success rates
+
+#### 7.2 Create Monitoring Dashboard
+
+Set up monitoring dashboards to track pipeline health using your existing infrastructure:
+
+##### Option 1: Elastic Stack + Grafana (Recommended)
+
+Since you're using Elastic & Grafana, here's how to set up comprehensive pipeline monitoring:
+
+**Step 1: Configure Azure DevOps Data Collection**
+
+Create a data pipeline to send Azure DevOps metrics to Elasticsearch:
+
+```json
+{
+  "pipeline_monitoring": {
+    "data_sources": [
+      {
+        "name": "azure_devops_builds",
+        "type": "azure_devops_api",
+        "endpoint": "https://dev.azure.com/{org}/{project}/_apis/build/builds",
+        "fields": [
+          "id", "buildNumber", "status", "result", 
+          "queueTime", "startTime", "finishTime",
+          "repository.name", "repository.type", "sourceBranch"
+        ]
+      },
+      {
+        "name": "azure_devops_releases",
+        "type": "azure_devops_api", 
+        "endpoint": "https://dev.azure.com/{org}/{project}/_apis/release/releases",
+        "fields": [
+          "id", "name", "status", "createdOn", "modifiedOn",
+          "environments[].name", "environments[].status"
+        ]
+      }
+    ],
+    "collection_interval": "5m"
+  }
+}
+```
+
+**Step 2: Logstash Configuration for Azure DevOps Data**
+
+```ruby
+# logstash-azure-devops.conf
+input {
+  http_poller {
+    urls => {
+      builds => {
+        method => get
+        url => "https://dev.azure.com/${AZURE_ORG}/${AZURE_PROJECT}/_apis/build/builds"
+        headers => {
+          Authorization => "Basic ${AZURE_PAT_BASE64}"
+        }
+        codec => "json"
+      }
+    }
+    request_timeout => 60
+    interval => 300
+    metadata_target => "http_poller_metadata"
+  }
+}
+
+filter {
+  # Parse Azure DevOps build data
+  if [http_poller_metadata][name] == "builds" {
+    split { field => "[value]" }
+    
+    mutate {
+      add_field => {
+        "pipeline_id" => "%{[value][definition][id]}"
+        "pipeline_name" => "%{[value][definition][name]}"
+        "build_status" => "%{[value][status]}"
+        "build_result" => "%{[value][result]}"
+        "repository_type" => "%{[value][repository][type]}"
+        "repository_name" => "%{[value][repository][name]}"
+        "source_branch" => "%{[value][sourceBranch]}"
+      }
+    }
+    
+    # Add migration status tag
+    if [repository_type] == "GitHub" {
+      mutate { add_tag => "migrated_to_github" }
+    } else if [repository_type] == "TfsGit" {
+      mutate { add_tag => "azure_repos" }
+    }
+    
+    date {
+      match => [ "[value][finishTime]", "ISO8601" ]
+      target => "@timestamp"
+    }
+  }
+}
+
+output {
+  elasticsearch {
+    hosts => ["${ELASTICSEARCH_HOST}:9200"]
+    index => "azure-devops-pipelines-%{+YYYY.MM.dd}"
+  }
+}
+```
+
+**Step 3: Grafana Dashboard Configuration**
+
+Create a comprehensive Grafana dashboard with these panels:
+
+```json
+{
+  "dashboard": {
+    "title": "Azure DevOps Pipeline Migration Monitoring",
+    "panels": [
+      {
+        "title": "Pipeline Success Rate by Repository Type",
+        "type": "stat",
+        "targets": [{
+          "query": "SELECT \n  COUNT(CASE WHEN build_result = 'succeeded' THEN 1 END) * 100.0 / COUNT(*) as success_rate,\n  repository_type\nFROM azure-devops-pipelines-*\nWHERE $__timeFilter(timestamp)\nGROUP BY repository_type"
+        }]
+      },
+      {
+        "title": "Migrated vs Non-Migrated Pipeline Performance",
+        "type": "timeseries",
+        "targets": [{
+          "query": "SELECT \n  histogram_quantile(0.95, build_duration) as p95_duration,\n  repository_type\nFROM azure-devops-pipelines-*\nWHERE $__timeFilter(timestamp)\nGROUP BY time($__interval), repository_type"
+        }]
+      },
+      {
+        "title": "Build Failures by Repository Type",
+        "type": "table",
+        "targets": [{
+          "query": "SELECT \n  pipeline_name,\n  repository_type,\n  COUNT(*) as failure_count\nFROM azure-devops-pipelines-*\nWHERE build_result = 'failed' AND $__timeFilter(timestamp)\nGROUP BY pipeline_name, repository_type\nORDER BY failure_count DESC\nLIMIT 20"
+        }]
+      }
+    ]
+  }
+}
+```
+
+##### Option 2: GitHub Actions Integration (If needed)
+
+If you want to monitor from the GitHub side as well:
+
+**Step 1: GitHub Actions Workflow for Monitoring**
+
+```yaml
+# .github/workflows/pipeline-health-monitor.yml
+name: Pipeline Health Monitor
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # Every 15 minutes
+  workflow_dispatch:
+
+jobs:
+  monitor-azure-pipelines:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check Azure DevOps Pipeline Status
+      run: |
+        # Query Azure DevOps API for recent builds
+        BUILDS=$(curl -u ":${{ secrets.AZURE_DEVOPS_PAT }}" \
+          "https://dev.azure.com/${{ vars.AZURE_ORG }}/${{ vars.AZURE_PROJECT }}/_apis/build/builds?api-version=6.0&\$top=50")
+        
+        # Count failed builds in last hour
+        FAILED_COUNT=$(echo "$BUILDS" | jq '[.value[] | select(.finishTime > (now - 3600 | strftime("%Y-%m-%dT%H:%M:%S.%fZ")) and .result == "failed")] | length')
+        
+        echo "Failed builds in last hour: $FAILED_COUNT"
+        
+        # Set up alerts if failure rate is high
+        if [ "$FAILED_COUNT" -gt 5 ]; then
+          echo "::warning::High failure rate detected: $FAILED_COUNT failed builds in last hour"
+        fi
+        
+    - name: Send to Monitoring System
+      if: env.ELASTIC_ENDPOINT
+      run: |
+        # Send metrics to your Elastic/Grafana stack
+        curl -X POST "${{ secrets.ELASTIC_ENDPOINT }}/github-monitoring/_doc" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\",
+            \"source\": \"github-actions\",
+            \"azure_pipeline_failures\": $FAILED_COUNT,
+            \"monitoring_run_id\": \"${{ github.run_id }}\"
+          }"
+```
+
+##### Recommended Approach for Your Setup
+
+Since you already have **Elastic & Grafana**, I recommend **Option 1** (Elastic Stack + Grafana) because:
+
+1. **Leverage existing infrastructure**: Use your current monitoring stack
+2. **Comprehensive metrics**: Track both Azure DevOps and GitHub metrics
+3. **Custom alerting**: Set up alerts for pipeline failures or performance degradation
+4. **Historical analysis**: Keep long-term data for trend analysis
+5. **Team familiarity**: Your team already knows Grafana dashboards
+
+### Step 8: Rollback Procedures
+
+Prepare rollback procedures in case issues arise:
+
+#### 8.1 Pipeline Rollback
+
+1. **Backup original configurations**: Export pipeline definitions before changes
+2. **Rollback script**: Create script to revert repository sources
+3. **Quick rollback**: Identify critical pipelines that need fastest rollback
+4. **Team communication**: Prepare communication plan for rollback scenarios
+
+#### 8.2 Service Connection Management
+
+1. **Preserve original connections**: Keep Azure Repos connections active during transition
+2. **Gradual migration**: Move pipelines in phases rather than all at once
+3. **Connection testing**: Regularly test both old and new connections
+
+### Troubleshooting Common Issues
+
+#### Issue 1: Service Connection Authentication Failures
+
+**Symptoms**: Pipeline fails with authentication errors
+
+**Solutions**:
+1. Verify GitHub PAT has correct scopes
+2. Check if GitHub App installation covers the repository
+3. Ensure service connection is authorized for the pipeline
+4. Verify repository permissions in GitHub
+
+#### Issue 2: Repository Not Found
+
+**Symptoms**: Pipeline fails to checkout repository
+
+**Solutions**:
+1. Verify repository name matches exactly (case sensitive)
+2. Check if repository is public/private and permissions are correct  
+3. Ensure service connection has access to the repository
+4. Verify GitHub organization name is correct
+
+#### Issue 3: Branch Reference Failures
+
+**Symptoms**: Pipeline cannot find specified branch
+
+**Solutions**:
+1. Update default branch references (master → main)
+2. Check if branch protection rules block pipeline access
+3. Verify branch naming conventions match
+4. Update trigger branch filters
+
+#### Issue 4: Variable Group Access
+
+**Symptoms**: Variables are empty or undefined in pipeline
+
+**Solutions**:
+1. Verify variable group permissions for the pipeline
+2. Check variable group security settings
+3. Ensure variable names haven't changed
+4. Test variable access with simple echo commands
+
+#### Issue 5: Environment Deployment Failures  
+
+**Symptoms**: Deployment stages fail to access environments
+
+**Solutions**:
+1. Verify environment permissions and approvals
+2. Check deployment group agent connectivity
+3. Update environment resource configurations
+4. Review deployment gate conditions
+
+### Best Practices Summary
+
+1. **Phased Approach**: Update pipelines in small batches to minimize risk
+2. **Testing First**: Always test with validation pipeline before production updates
+3. **Documentation**: Maintain an inventory of updated pipelines and their status
+4. **Rollback Ready**: Keep rollback procedures tested and available
+5. **Team Communication**: Keep teams informed of changes and timelines
+6. **Monitoring**: Set up proactive monitoring for pipeline health
+7. **Security**: Regularly rotate PATs and review service connection permissions
+8. **Automation**: Use scripts for bulk updates but validate results manually
+
+Following these comprehensive steps will ensure your Azure DevOps pipelines are properly configured to work with your migrated GitHub repositories while maintaining reliability and security.
 
 ---
 
