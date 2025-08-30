@@ -88,12 +88,12 @@ jobs:
                 try:
                     with open(config_file, 'r') as f:
                         json.load(f)
-                    print(f'✓ {config_file} is valid JSON')
+                    print(f'OK {config_file} is valid JSON')
                 except json.JSONDecodeError as e:
-                    print(f'✗ {config_file} has JSON errors: {e}')
+                    print(f'ERROR {config_file} has JSON errors: {e}')
                     sys.exit(1)
             else:
-                print(f'⚠ {config_file} not found')
+                print(f'WARNING {config_file} not found')
         
         print('All configuration files validated successfully!')
         "
