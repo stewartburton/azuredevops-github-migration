@@ -70,7 +70,7 @@ function Warn($m) { Write-Warning $m }
 function Fail($m) { Write-Error $m; exit 3 }
 function SafeCount($x) {
   if ($null -eq $x) { return 0 }
-  if ($x -is [string]) { return 1 }
+  if ($x -is [string]) { return ($x.Length -gt 0) ? 1 : 0 }
   try { return (@($x)).Count } catch { return 0 }
 }
 
