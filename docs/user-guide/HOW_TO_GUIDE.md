@@ -205,17 +205,17 @@ Before migrating, analyze what you have:
 # Validate your setup first
 azuredevops-github-migration migrate --validate-only --config config.json
 
-# Analyze entire organization
-azuredevops-github-migration analyze --create-plan --config config.json
+# Analyze entire organization (config.json default)
+azuredevops-github-migration analyze --create-plan
 
 # Analyze specific project
-azuredevops-github-migration analyze --project "MyProject" --create-plan --config config.json
+azuredevops-github-migration analyze --project "MyProject" --create-plan
 
 # Jira mode (omit & skip work items)
-azuredevops-github-migration analyze --project "MyProject" --create-plan --config config.json --skip-work-items
+azuredevops-github-migration analyze --project "MyProject" --create-plan --skip-work-items
 
 # Export as CSV
-azuredevops-github-migration analyze --format csv --config config.json
+azuredevops-github-migration analyze --format csv
 ```
 
 This creates:
@@ -395,7 +395,7 @@ azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" \
 
 ```bash
 # 1. Start with analysis
-azuredevops-github-migration analyze --create-plan --config config.json
+azuredevops-github-migration analyze --create-plan
 
 # 2. Edit the generated plan to prioritize critical repositories
 # 3. Run migration in batches
@@ -628,7 +628,7 @@ cp examples/jira-users-config.json config.json  # For Jira users (most common)
 azuredevops-github-migration migrate --validate-only --config config.json
 
 # 4. Analyze
-azuredevops-github-migration analyze --create-plan --config config.json
+azuredevops-github-migration analyze --create-plan
 # For Jira users: add --skip-work-items flag
 
 # 5. Plan

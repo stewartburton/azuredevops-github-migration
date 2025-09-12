@@ -105,8 +105,23 @@ class AzureDevOpsClient:
             self.logger.error("Timeout getting projects from Azure DevOps")
             raise MigrationError("Azure DevOps API timeout")
         except requests.exceptions.RequestException as e:
+            status = getattr(getattr(e, 'response', None), 'status_code', None)
+            base_msg = f"Failed to get projects: {str(e)}"
+            if status == 401:
+                hint = (
+                    " Authentication failed (401). Check: PAT validity, scopes (Project & Team Read, Code Read), "
+                    f"organization slug '{self.organization}' correctness, and that the PAT was created for the correct Azure DevOps org."\
+                    " If using placeholders, replace them. You can verify manually with: curl -u :$AZURE_DEVOPS_PAT "
+                    f"https://dev.azure.com/{self.organization}/_apis/projects?api-version=7.0"
+                )
+                self.logger.error(base_msg + hint)
+                raise MigrationError(base_msg + hint)
+            if status == 404:
+                hint = (f" Organization '{self.organization}' not found (404). Verify the slug at dev.azure.com and PAT access.")
+                self.logger.error(base_msg + hint)
+                raise MigrationError(base_msg + hint)
             self.logger.error(f"Error getting projects: {str(e)}")
-            raise MigrationError(f"Failed to get projects: {str(e)}")
+            raise MigrationError(base_msg)
     
     def get_repositories(self, project_name: str) -> List[Dict[str, Any]]:
         """Get all repositories in a project."""

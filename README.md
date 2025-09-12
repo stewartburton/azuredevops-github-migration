@@ -157,7 +157,7 @@ azuredevops-github-migration doctor --config config.json
 azuredevops-github-migration doctor --json
 
 # 2. Analyze your organization (optional)
-azuredevops-github-migration analyze --create-plan --config config.json
+azuredevops-github-migration analyze --create-plan  # --config no longer required when using default config.json
 
 # 3. Test migration (safe, no changes)
 azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --dry-run --config config.json

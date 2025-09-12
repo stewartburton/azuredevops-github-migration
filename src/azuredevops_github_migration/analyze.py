@@ -24,7 +24,7 @@ class AzureDevOpsAnalyzer:
     - Graceful degradation if work item access fails (e.g. missing scope)
     """
 
-    def __init__(self, config_file: str = "migration_config.yaml", skip_work_items: bool = False,
+    def __init__(self, config_file: str = "config.json", skip_work_items: bool = False,
                  omit_work_item_fields: bool = False):
         self.config = self.load_config(config_file)
         self.skip_work_items = skip_work_items
@@ -33,6 +33,7 @@ class AzureDevOpsAnalyzer:
             self.config['azure_devops']['organization'],
             self.config['azure_devops']['personal_access_token']
         )
+        self._config_file = config_file
     
     def load_config(self, config_file: str) -> Dict[str, Any]:
         """Load configuration from YAML or JSON file with ${ENV_VAR} substitution.
@@ -358,12 +359,19 @@ class AzureDevOpsAnalyzer:
         return filename
 
 
-def main():
-    """Main entry point for the analysis tool."""
+def main(argv=None):
+    """Main entry point for the analysis tool.
+
+    Added enhancements:
+      - Default config file now 'config.json' (matches migrate / doctor)
+      - Added --list-projects / --list-repos for quick discovery without full analysis
+      - Added --debug to echo resolved configuration (sanitized) and verbose progress
+    """
     import argparse
-    
+    import json as _json
+
     parser = argparse.ArgumentParser(description='Azure DevOps Organization Analyzer')
-    parser.add_argument('--config', default='migration_config.yaml',
+    parser.add_argument('--config', default='config.json',
                        help='Configuration file path')
     parser.add_argument('--format', choices=['json', 'csv'], default='json',
                        help='Export format for analysis report')
@@ -373,8 +381,13 @@ def main():
                        help='Analyze specific project only')
     parser.add_argument('--skip-work-items', action='store_true',
                        help='Skip querying work items AND omit all work item related fields')
-    
-    args = parser.parse_args()
+    parser.add_argument('--list-projects', action='store_true',
+                        help='List Azure DevOps projects then exit')
+    parser.add_argument('--list-repos', metavar='PROJECT',
+                        help='List repositories in given project then exit')
+    parser.add_argument('--debug', action='store_true',
+                        help='Verbose logging and echo effective (sanitized) configuration')
+    args = parser.parse_args(argv)
     
     try:
         analyzer = AzureDevOpsAnalyzer(
@@ -382,6 +395,34 @@ def main():
             skip_work_items=args.skip_work_items,
             omit_work_item_fields=args.skip_work_items  # single flag controls both behaviors
         )
+
+        if args.debug:
+            # Shallow sanitize of PAT
+            cfg_copy = {
+                **analyzer.config,
+                'azure_devops': {
+                    **analyzer.config.get('azure_devops', {}),
+                    'personal_access_token': '***' + analyzer.config.get('azure_devops', {}).get('personal_access_token', '')[-4:]
+                }
+            }
+            print("[DEBUG] Loaded config from", analyzer._config_file)
+            print("[DEBUG] Effective configuration (sanitized):")
+            print(_json.dumps(cfg_copy, indent=2))
+
+        # Lightweight discovery modes
+        if args.list_projects:
+            projects = analyzer.client.get_projects()
+            print(f"Found {len(projects)} projects:")
+            for p in projects:
+                print(f"• {p['name']} ({p.get('visibility','private')})")
+            return 0
+
+        if args.list_repos:
+            repos = analyzer.client.get_repositories(args.list_repos)
+            print(f"Found {len(repos)} repositories in project '{args.list_repos}':")
+            for r in repos:
+                print(f"• {r['name']}")
+            return 0
         
         if args.project:
             # Analyze specific project
@@ -433,11 +474,13 @@ def main():
             print(f"3. Run: python batch_migrate.py --plan {plan_file}")
 
         print(f"\n✅ Analysis completed successfully!")
-        
+        return 0
     except Exception as e:
         print(f"❌ Error: {str(e)}")
-        exit(1)
+        if args and getattr(args, 'debug', False):
+            import traceback; traceback.print_exc()
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
