@@ -123,9 +123,47 @@ def check_config_file(config_path: str) -> Dict[str, Any]:
     return data
 
 
+def _gather_env_audit() -> Dict[str, Any]:
+    """Collect environment variable audit similar to Test-MigrationEnv.ps1 (lightweight).
+
+    We consider both canonical and legacy aliases; we don't mutate env here beyond
+    prior optional .env loading. Values are masked in output.
+    """
+    def mask(val: str | None) -> str:
+        if not val:
+            return ""
+        if len(val) <= 8:
+            return "****"
+        return f"{val[:4]}...{val[-4:]}"
+
+    aliases = {
+        "AZURE_DEVOPS_ORGANIZATION": ["AZURE_DEVOPS_ORGANIZATION", "AZURE_DEVOPS_ORG"],
+        "GITHUB_ORGANIZATION": ["GITHUB_ORGANIZATION", "GITHUB_ORG"],
+        "AZURE_DEVOPS_PAT": ["AZURE_DEVOPS_PAT"],
+        "GITHUB_TOKEN": ["GITHUB_TOKEN"],
+    }
+    audit: Dict[str, Any] = {"variables": {}, "all_present": True}
+    for canon, keys in aliases.items():
+        file_present = any(k in os.environ for k in keys)
+        raw_value = None
+        for k in keys:
+            if k in os.environ:
+                raw_value = os.environ.get(k)
+                break
+        audit["variables"][canon] = {
+            "present": bool(raw_value),
+            "masked": mask(raw_value),
+            "aliases_checked": keys,
+        }
+        if not raw_value:
+            audit["all_present"] = False
+    return audit
+
+
 def gather_diagnostics(config: str) -> Dict[str, Any]:
     # Attempt to load .env early so presence test reflects file contents
     _load_env_file()
+    env_audit = _gather_env_audit()
     diag: Dict[str, Any] = {
         "tool_version": __version__,
         "platform": platform.platform(),
@@ -137,10 +175,7 @@ def gather_diagnostics(config: str) -> Dict[str, Any]:
             "github_api": check_network_host("api.github.com"),
             "azure_devops": check_network_host("dev.azure.com"),
         },
-        "env_tokens_present": {
-            "AZURE_DEVOPS_PAT": bool(os.getenv("AZURE_DEVOPS_PAT")),
-            "GITHUB_TOKEN": bool(os.getenv("GITHUB_TOKEN")),
-        },
+        "env": env_audit,
     }
     return diag
 
@@ -174,9 +209,13 @@ def print_human(diag: Dict[str, Any]):
             print(f"  Error: {diag['config']['error']}")
     else:
         print(f"  Missing: {diag['config']['path']}")
-    print("Environment Tokens:")
-    for k, v in diag['env_tokens_present'].items():
-        print(f"  {k}: {'SET' if v else 'MISSING'}")
+    print("Environment Variables:")
+    for name, meta in diag['env']['variables'].items():
+        status = 'SET' if meta['present'] else 'MISSING'
+        masked = meta['masked'] or '-'
+        print(f"  {name}: {status}  (value: {masked})")
+    if not diag['env']['all_present']:
+        print("  One or more required variables are missing. Run: scripts/Test-MigrationEnv.ps1 -Load")
     print("Network Reachability (TCP 443):")
     for name, res in diag['network'].items():
         if res['reachable']:
@@ -203,7 +242,12 @@ def main(argv=None):
     else:
         print_human(diag)
     # Exit non-zero if critical failures
-    critical_fail = (not diag['package_import']['importable']) or (not diag['git']['found'])
+    critical_fail = (
+        (not diag['package_import']['importable'])
+        or (not diag['git']['found'])
+        or (not diag['env']['variables']['AZURE_DEVOPS_PAT']['present'])
+        or (not diag['env']['variables']['GITHUB_TOKEN']['present'])
+    )
     return 1 if critical_fail else 0
 
 
