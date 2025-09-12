@@ -13,6 +13,7 @@ import shutil
 import socket
 import platform
 import argparse
+import subprocess
 from pathlib import Path
 
 # --- Internal helpers for optional .env loading (mirrors migrate/analyze behavior) ---
@@ -124,6 +125,14 @@ def check_config_file(config_path: str) -> Dict[str, Any]:
     return data
 
 
+PLACEHOLDER_PREFIXES = (
+    'your_azure_devops_personal_access_token',
+    'your_github_personal_access_token',
+    'your_azure_devops_org',
+    'your_github_org'
+)
+
+
 def _gather_env_audit() -> Dict[str, Any]:
     """Collect environment variable audit similar to Test-MigrationEnv.ps1 (lightweight).
 
@@ -145,19 +154,29 @@ def _gather_env_audit() -> Dict[str, Any]:
     }
     audit: Dict[str, Any] = {"variables": {}, "all_present": True}
     for canon, keys in aliases.items():
-        file_present = any(k in os.environ for k in keys)
         raw_value = None
         for k in keys:
             if k in os.environ:
                 raw_value = os.environ.get(k)
                 break
+        placeholder = False
+        if raw_value:
+            lower = raw_value.lower()
+            for p in PLACEHOLDER_PREFIXES:
+                if lower.startswith(p):
+                    placeholder = True
+                    break
         audit["variables"][canon] = {
             "present": bool(raw_value),
             "masked": mask(raw_value),
             "aliases_checked": keys,
+            "placeholder": placeholder,
         }
         if not raw_value:
             audit["all_present"] = False
+        elif placeholder:
+            # treat placeholder as a not-usable value for overall readiness
+            audit.setdefault('placeholders', []).append(canon)
     return audit
 
 
@@ -275,11 +294,59 @@ def print_human(diag: Dict[str, Any]):
         print("Initialize a config: azuredevops-github-migration init --template jira-users")
 
 
+def _assist_loop(config: str):
+    """Interactive remediation submenu for doctor.
+
+    Provides options:
+      1. Run PowerShell env loader (update-env)
+      2. Append missing placeholders (fix-env)
+      3. Re-run diagnostics
+      4. Quit
+    """
+    from .interactive import run_update_env  # local import to avoid heavy dependency if unused
+    while True:
+        diag = gather_diagnostics(config)
+        print("\nCurrent environment status:")
+        for name, meta in diag['env']['variables'].items():
+            state = 'OK'
+            if not meta['present']:
+                state = 'MISSING'
+            elif meta.get('placeholder'):
+                state = 'PLACEHOLDER'
+            print(f"  - {name}: {state} (value: {meta['masked'] or '-'})")
+        if diag['env'].get('placeholders'):
+            print(f"Placeholders detected for: {', '.join(diag['env']['placeholders'])}")
+        print("\nRemediation options:")
+        print("  1) Run PowerShell helper to load/update env (update-env)")
+        print("  2) Append missing canonical placeholders (fix-env)")
+        print("  3) Re-run diagnostics (refresh)")
+        print("  4) Quit assist menu")
+        choice = input("Select option [1-4]: ").strip()
+        if choice == '1':
+            rc = run_update_env()
+            print(f"update-env exit code: {rc}")
+        elif choice == '2':
+            new_diag = gather_diagnostics(config, fix_env=True)
+            added = new_diag.get('fix_env', {}).get('added', [])
+            if added:
+                print(f"Added placeholders for: {', '.join(added)}")
+            else:
+                print("No new placeholders added (all present).")
+        elif choice == '3':
+            continue  # loop reruns diagnostics
+        elif choice == '4':
+            print("Exiting assist submenu.")
+            break
+        else:
+            print("Invalid selection – choose 1, 2, 3, or 4.")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Diagnostic utility for migration tool")
     parser.add_argument('--config', default='config.json', help='Config file to validate (json or yaml)')
     parser.add_argument('--json', action='store_true', help='Output JSON only (machine-readable)')
     parser.add_argument('--fix-env', action='store_true', help='Append missing canonical env variable placeholders to .env')
+    parser.add_argument('--assist', action='store_true', help='Open interactive remediation submenu after diagnostics')
     args = parser.parse_args(argv)
     diag = gather_diagnostics(args.config, fix_env=args.fix_env)
     if args.json:
@@ -295,6 +362,8 @@ def main(argv=None):
                     print(f"Failed to append placeholders: {diag['fix_env']['error']}")
                 else:
                     print("All canonical environment variable placeholders already present.")
+        if args.assist and not args.json:
+            _assist_loop(args.config)
     # Exit non-zero if critical failures
     critical_fail = (
         (not diag['package_import']['importable'])
