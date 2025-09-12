@@ -287,15 +287,67 @@ Example JSON excerpt:
 
 ### PowerShell Helper (Windows) – `scripts/Test-MigrationEnv.ps1`
 
-For richer local / CI validation you can also use the PowerShell helper script:
+The PowerShell helper provides an interactive and scriptable environment audit. It complements (but does not replace) the `doctor` command.
 
+Core capabilities:
+- Reads a `.env` file (defaults to `./.env`) and inspects four required values
+    - `AZURE_DEVOPS_PAT`
+    - `GITHUB_TOKEN`
+    - `AZURE_DEVOPS_ORGANIZATION` (alias: `AZURE_DEVOPS_ORG`)
+    - `GITHUB_ORGANIZATION` (alias: `GITHUB_ORG`)
+- Optional load of values into the current PowerShell session (`-Load`) without overwriting existing values unless `-Overwrite` is also supplied
+- Optional interactive prompting (`-Prompt`) – secure input for tokens, plain input for organization names
+- Automatic prompting if required variables are missing and neither `-Json` nor `-Prompt` was specified (so a plain run helps you fill gaps)
+- JSON machine output (`-Json`) suitable for pipeline gating
+- Masked display (first 4 + last 4 chars; short values become `****`)
+
+Table column meanings:
+| Column | Meaning |
+|--------|---------|
+| `Name` | Canonical variable name |
+| `InFile` | Present in `.env` (or alias present) |
+| `InSession` | Present in current PowerShell process environment |
+| `FileMasked` | Masked value sourced from file (if present) |
+| `SessionMasked` | Masked in‑session value (if present) |
+| `Matches` | Simply indicates the variable is present both in file AND session (does not compare literal equality) |
+
+Usage examples:
 ```powershell
-./scripts/Test-MigrationEnv.ps1              # Human report
-./scripts/Test-MigrationEnv.ps1 -Json        # JSON output (exit code preserved)
-./scripts/Test-MigrationEnv.ps1 -Load        # Load .env into current session then report
+# Basic audit (will auto‑prompt if something is missing)
+./scripts/Test-MigrationEnv.ps1
+
+# Force interactive entry even if everything is already set
+./scripts/Test-MigrationEnv.ps1 -Prompt
+
+# Load from .env (without overwriting existing session values) then prompt for any still missing
+./scripts/Test-MigrationEnv.ps1 -Load -Prompt
+
+# Overwrite existing session values from the .env file
+./scripts/Test-MigrationEnv.ps1 -Load -Overwrite
+
+# JSON output for pipelines (never prompts automatically in JSON mode)
+./scripts/Test-MigrationEnv.ps1 -Json | ConvertFrom-Json
+
+# Fail the build (exit code 2) if anything is missing after attempted load
+./scripts/Test-MigrationEnv.ps1 -Load -FailOnMissing -Json
+
+# Quiet mode suppresses table & summary (but will still auto‑prompt if variables are missing)
+./scripts/Test-MigrationEnv.ps1 -Quiet
 ```
 
-Exit codes (script): 0 = OK, 1 = internal error, 2 = warnings (non‑fatal missing optional vars), 3 = fatal (missing required tokens). The `doctor` command covers the common pre‑flight path; the PowerShell script is convenient for Windows shells and pipeline gates.
+Exit codes (current script implementation):
+| Code | Meaning |
+|------|---------|
+| 0 | Ran successfully (even if values are missing and `-FailOnMissing` was NOT supplied) |
+| 2 | `-FailOnMissing` specified AND at least one required variable absent from the session after load / prompt |
+
+Notes:
+- There is intentionally no distinct "fatal vs warning" code split (older documentation referenced 1/2/3 – the script now uses only 0 and 2).
+- Placeholder values (e.g. `your_azure_devops_personal_access_token`) are treated as present; the script does not validate token authenticity.
+- When auto‑prompting, press Enter to keep the existing masked value; entering text replaces it for the current session only (no file write‑back).
+- To persist updated values back to `.env`, edit the file manually (future enhancement may automate this).
+
+`doctor` is the simplest cross-platform pre‑flight; the PowerShell helper is ideal for Windows developer onboarding, local verification, or adding a lightweight gate in Azure DevOps / GitHub Actions Windows runners.
 
 ### Migration Config
 
