@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated README to remove obsolete secret parameter references and reflect new JSON mode & exit code behavior.
 - Clarified branch protection and lint optional flags usage without secret complexity.
 - Documented relocation of verification workflow; users now copy from `examples/verify-migration-workflow.yml` into their migrated repositories if desired.
+- Added explicit warning that the tool repository no longer stores any converted workflow YAML; all previously committed migrated workflows were purged.
 
 ### Notes
 - Further doc polish (HOW_TO_GUIDE, TESTING) validated to have no lingering secret parameter references.

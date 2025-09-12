@@ -452,7 +452,7 @@ If branch protection API returns 404 despite repo visibility, ensure the token h
 
 #### GitHub Action Automation
 
-An example reusable workflow (`examples/verify-migration-workflow.yml`) is provided. Copy it to `.github/workflows/verify-migration.yml` in a target repository **you are migrating**, not this tool's repository, if you want automated verification. It triggers on pushes changing migration reports or the script, or via manual dispatch:
+No migration-generated workflows are stored in this tool repository. An example reusable workflow (`examples/verify-migration-workflow.yml`) is provided—copy it into the **target migrated repository** as `.github/workflows/verify-migration.yml` if you want automated verification. Do **not** add converted pipeline workflows to the tool repo; they belong only in destination repos. The example triggers on pushes changing migration reports or the script, or via manual dispatch:
 
 Manual dispatch inputs:
 | Input | Description |
