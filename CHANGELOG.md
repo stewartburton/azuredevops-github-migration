@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exit code semantics clarified: `0` success, `2` warnings (non-fatal), `3` fatal (repository inaccessible or configured fail conditions).
 - Centralized exit evaluation logic and removed duplicate code paths in verification script.
 - Simplified GitHub Actions workflow to only require `org` and `repo` inputs.
+- Pipeline conversion now generates workflows in isolated temp directories only; no `.github/workflows` files are written to the migration tool repository.
 
 ### Fixed
 - Eliminated brittle direct `.Count` usage by introducing `SafeCount` helper, resolving intermittent `property 'Count' cannot be found` runtime errors.

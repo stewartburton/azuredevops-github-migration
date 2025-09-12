@@ -1091,67 +1091,62 @@ class MigrationOrchestrator:
     def _migrate_pipelines(self, pipelines: List[Dict[str, Any]], github_repo_name: str, dry_run: bool):
         """Convert and migrate Azure DevOps pipelines to GitHub Actions."""
         try:
-            workflows_dir = '.github/workflows'
-            if not dry_run:
-                os.makedirs(workflows_dir, exist_ok=True)
-            
-            converted_files = self.pipeline_converter.convert_pipelines_to_actions(
-                pipelines, workflows_dir, dry_run
-            )
-            
+            # Generate workflows in an isolated temp directory to avoid polluting the tool's repository
+            temp_gen_dir = tempfile.mkdtemp(prefix='workflow_gen_')
+            workflows_dir = os.path.join(temp_gen_dir, '.github', 'workflows')
+            os.makedirs(workflows_dir, exist_ok=True)
+
+            converted_files = self.pipeline_converter.convert_pipelines_to_actions(pipelines, workflows_dir, dry_run)
+
             if converted_files:
-                self.logger.info(f"[OK] Converted {len(converted_files)} pipelines to GitHub Actions")
-                # If not a dry run, commit and push the generated workflow files to the target GitHub repository.
+                self.logger.info(f"[OK] Converted {len(converted_files)} pipelines to GitHub Actions (isolated)")
                 if not dry_run:
                     try:
                         gh_org = self.github_client.organization or self.github_client.get_user().get('login', 'unknown')
                         repo_url = f"https://github.com/{gh_org}/{github_repo_name}.git"
-                        self.logger.info(f"Preparing to commit workflows to {repo_url}")
-                        temp_dir = tempfile.mkdtemp(prefix='workflow_commit_')
-                        clone_result = subprocess.run([
-                            'git', 'clone', repo_url, temp_dir
-                        ], capture_output=True, text=True, timeout=600)
+                        self.logger.info(f"Preparing to commit workflows to {repo_url} from isolated directory")
+                        temp_clone_dir = tempfile.mkdtemp(prefix='workflow_commit_')
+                        clone_result = subprocess.run(['git', 'clone', repo_url, temp_clone_dir], capture_output=True, text=True, timeout=600)
                         if clone_result.returncode != 0:
                             self.logger.warning(f"Could not clone repo to add workflows: {clone_result.stderr.strip()}")
                         else:
-                            dest_wf_dir = os.path.join(temp_dir, '.github', 'workflows')
+                            dest_wf_dir = os.path.join(temp_clone_dir, '.github', 'workflows')
                             os.makedirs(dest_wf_dir, exist_ok=True)
                             changes = False
                             for wf in converted_files:
                                 src_path = os.path.join(workflows_dir, wf)
                                 dst_path = os.path.join(dest_wf_dir, wf)
                                 if os.path.exists(dst_path):
-                                    # Avoid overwriting existing workflow; append suffix
                                     base, ext = os.path.splitext(wf)
                                     dst_path = os.path.join(dest_wf_dir, f"{base}-migrated{ext}")
                                     self.logger.warning(f"Workflow {wf} already exists in target repo – saving as {os.path.basename(dst_path)}")
                                 shutil.copy2(src_path, dst_path)
                                 changes = True
                             if changes:
-                                # Configure git user if missing
-                                subprocess.run(['git', '-C', temp_dir, 'config', '--get', 'user.email'], capture_output=True)
-                                if subprocess.run(['git', '-C', temp_dir, 'config', '--get', 'user.email'], capture_output=True).returncode != 0:
-                                    subprocess.run(['git', '-C', temp_dir, 'config', 'user.email', 'migration-tool@local'], capture_output=True)
-                                    subprocess.run(['git', '-C', temp_dir, 'config', 'user.name', 'ADO-GH Migration Tool'], capture_output=True)
-                                add_res = subprocess.run(['git', '-C', temp_dir, 'add', '.github/workflows'], capture_output=True, text=True)
+                                # Ensure git user identity
+                                if subprocess.run(['git', '-C', temp_clone_dir, 'config', '--get', 'user.email'], capture_output=True).returncode != 0:
+                                    subprocess.run(['git', '-C', temp_clone_dir, 'config', 'user.email', 'migration-tool@local'], capture_output=True)
+                                    subprocess.run(['git', '-C', temp_clone_dir, 'config', 'user.name', 'ADO-GH Migration Tool'], capture_output=True)
+                                add_res = subprocess.run(['git', '-C', temp_clone_dir, 'add', '.github/workflows'], capture_output=True, text=True)
                                 if add_res.returncode != 0:
                                     self.logger.warning(f"Failed to stage workflows: {add_res.stderr.strip()}")
                                 else:
-                                    commit_res = subprocess.run(['git', '-C', temp_dir, 'commit', '-m', 'Add converted Azure DevOps pipelines as GitHub Actions workflows'], capture_output=True, text=True)
+                                    commit_res = subprocess.run(['git', '-C', temp_clone_dir, 'commit', '-m', 'Add converted Azure DevOps pipelines as GitHub Actions workflows'], capture_output=True, text=True)
                                     if commit_res.returncode == 0:
-                                        push_res = subprocess.run(['git', '-C', temp_dir, 'push'], capture_output=True, text=True)
+                                        push_res = subprocess.run(['git', '-C', temp_clone_dir, 'push'], capture_output=True, text=True)
                                         if push_res.returncode == 0:
                                             self.logger.info("[OK] Workflow files committed and pushed to GitHub")
                                         else:
                                             self.logger.warning(f"Failed to push workflows: {push_res.stderr.strip()}")
                                     else:
-                                        # Nothing to commit perhaps
-                                        if 'nothing to commit' in (commit_res.stdout + commit_res.stderr).lower():
+                                        combined = (commit_res.stdout + commit_res.stderr).lower()
+                                        if 'nothing to commit' in combined:
                                             self.logger.info("No workflow changes to commit (already present)")
                                         else:
                                             self.logger.warning(f"Failed to commit workflows: {commit_res.stderr.strip()}")
                     except Exception as wf_err:
                         self.logger.warning(f"Could not auto-commit workflows: {wf_err}")
+            # No files are left behind in the tool repo.
             
         except Exception as e:
             self.logger.error(f"Pipeline migration failed: {str(e)}")
