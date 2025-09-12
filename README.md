@@ -231,6 +231,66 @@ AZURE_DEVOPS_PAT=your_azure_devops_personal_access_token
 GITHUB_TOKEN=your_github_personal_access_token
 ```
 
+You may also specify organization names (recommended) so commands and the diagnostic tool can resolve them without prompting:
+
+```
+AZURE_DEVOPS_ORGANIZATION=your-azure-devops-org   # alias: AZURE_DEVOPS_ORG
+GITHUB_ORGANIZATION=your-github-org              # alias: GITHUB_ORG
+```
+
+If both a canonical name and an alias are set the canonical name wins. The tool will attempt to load the `.env` file automatically for every command (without overwriting variables already set in your shell session).
+
+### Pre‑Flight Diagnostics & Environment Audit (`doctor`)
+
+Run a fast, side‑effect‑free health check at any time:
+
+```bash
+azuredevops-github-migration doctor            # Human formatted
+azuredevops-github-migration doctor --json     # Machine readable
+```
+
+What it checks:
+* Python interpreter & package importability
+* Git presence & version
+* Config file exists and parses (`--config` to point at a different file; default `config.json`)
+* Network reachability (api.github.com & dev.azure.com TCP 443)
+* Required environment variables & accepted aliases:
+    - AZURE_DEVOPS_PAT
+    - GITHUB_TOKEN
+    - AZURE_DEVOPS_ORGANIZATION (alias: AZURE_DEVOPS_ORG)
+    - GITHUB_ORGANIZATION (alias: GITHUB_ORG)
+
+Secrets are masked (first 4 … last 4) or replaced with `****` for short values. The command auto‑loads a local `.env` (if present) before auditing so you don't need to export variables manually. It never overwrites values already present in the process environment.
+
+Exit codes:
+* 0 = All critical checks passed
+* 1 = One or more critical failures (missing PAT/TOKEN, git missing, or package cannot be imported)
+
+Example JSON excerpt:
+```json
+{
+    "env": {
+        "variables": {
+            "AZURE_DEVOPS_PAT": {"present": true, "masked": "abcd...wxyz"},
+            "GITHUB_TOKEN": {"present": true, "masked": "abcd...wxyz"}
+        },
+        "all_present": true
+    }
+}
+```
+
+### PowerShell Helper (Windows) – `scripts/Test-MigrationEnv.ps1`
+
+For richer local / CI validation you can also use the PowerShell helper script:
+
+```powershell
+./scripts/Test-MigrationEnv.ps1              # Human report
+./scripts/Test-MigrationEnv.ps1 -Json        # JSON output (exit code preserved)
+./scripts/Test-MigrationEnv.ps1 -Load        # Load .env into current session then report
+```
+
+Exit codes (script): 0 = OK, 1 = internal error, 2 = warnings (non‑fatal missing optional vars), 3 = fatal (missing required tokens). The `doctor` command covers the common pre‑flight path; the PowerShell script is convenient for Windows shells and pipeline gates.
+
 ### Migration Config
 
 Edit `config.json` to configure:
