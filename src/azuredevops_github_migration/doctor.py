@@ -35,8 +35,11 @@ def _load_env_file(filename: str = '.env') -> None:
                 key, value = line.split('=', 1)
                 key = key.strip()
                 value = value.strip().strip("'").strip('"')
-                # Do not overwrite if already set in environment
-                if key and key not in os.environ:
+                if not key:
+                    continue
+                # Overwrite if not present OR existing value looks like a placeholder (starts with 'your_')
+                existing = os.environ.get(key)
+                if existing is None or existing.lower().startswith('your_'):
                     os.environ[key] = value
     except Exception as e:  # pragma: no cover - non critical path
         print(f"[WARN] Unable to load .env file: {e}")
@@ -142,9 +145,11 @@ def _gather_env_audit() -> Dict[str, Any]:
     def mask(val: str | None) -> str:
         if not val:
             return ""
-        if len(val) <= 8:
-            return "****"
-        return f"{val[:4]}...{val[-4:]}"
+        # Tests expect: startswith original first 4 chars, and remainder obfuscated (no raw tail)
+        if len(val) <= 4:
+            return val[0] + "***" if len(val) > 1 else "****"
+        # Keep first 4, replace remainder with fixed asterisks; do not reveal tail length
+        return val[:4] + "****"
 
     aliases = {
         "AZURE_DEVOPS_ORGANIZATION": ["AZURE_DEVOPS_ORGANIZATION", "AZURE_DEVOPS_ORG"],
@@ -240,6 +245,15 @@ def gather_diagnostics(config: str, fix_env: bool = False) -> Dict[str, Any]:
     }
     if fix_env:
         diag["fix_env"] = _append_missing_env_placeholders('.env', env_audit)
+    # Backward compatibility: replicate env variables into legacy 'environment' shape expected by older tests
+    legacy_env: Dict[str, Any] = {}
+    for name, meta in env_audit['variables'].items():
+        legacy_env[name] = {
+            'present': meta['present'],
+            # Provide separate field matching older expectation name
+            'value_masked': meta['masked'],
+        }
+    diag['environment'] = legacy_env
     return diag
 
 
@@ -292,6 +306,14 @@ def print_human(diag: Dict[str, Any]):
         print("Install Git and ensure it is on your PATH.")
     if not diag['config']['exists']:
         print("Initialize a config: azuredevops-github-migration init --template jira-users")
+
+
+def _print_masked_env_only(diag: Dict[str, Any]):
+    print("Environment Variables (masked):")
+    for name, meta in diag['env']['variables'].items():
+        status = 'SET' if meta['present'] else 'MISSING'
+        masked = meta['masked'] or '-'
+        print(f"  {name}: {status} (masked={masked})")
 
 
 def _assist_loop(config: str):
@@ -347,8 +369,16 @@ def main(argv=None):
     parser.add_argument('--json', action='store_true', help='Output JSON only (machine-readable)')
     parser.add_argument('--fix-env', action='store_true', help='Append missing canonical env variable placeholders to .env')
     parser.add_argument('--assist', action='store_true', help='Open interactive remediation submenu after diagnostics')
+    parser.add_argument('--print-env', action='store_true', help='Print only masked environment variable status and exit')
     args = parser.parse_args(argv)
     diag = gather_diagnostics(args.config, fix_env=args.fix_env)
+    if args.print_env and args.json:
+        # If both requested, prioritize JSON style (already contains environment)
+        print(json.dumps(diag, indent=2))
+        return 0
+    if args.print_env:
+        _print_masked_env_only(diag)
+        return 0 if diag['env']['variables']['GITHUB_TOKEN']['present'] or diag['env']['variables']['AZURE_DEVOPS_PAT']['present'] else 1
     if args.json:
         print(json.dumps(diag, indent=2))
     else:
