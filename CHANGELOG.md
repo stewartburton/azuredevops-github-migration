@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Removed
 - Secret management / required secrets logic from `scripts/verify-migration.ps1` and associated GitHub Actions workflow inputs (`required_secrets`, `fail_on_missing_secrets`).
+- Converted/migrated pipeline workflow artifacts (e.g. `rick.yml`) from the tool repository to avoid bundling target migration outputs.
+- Active verification workflow from `.github/workflows/verify-migration.yml` (moved to `examples/verify-migration-workflow.yml`).
 
 ### Added
 - `-Json` flag for `verify-migration.ps1` to produce machine-readable summary (used by workflow PR comments & artifacts).
@@ -27,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 - Updated README to remove obsolete secret parameter references and reflect new JSON mode & exit code behavior.
 - Clarified branch protection and lint optional flags usage without secret complexity.
+- Documented relocation of verification workflow; users now copy from `examples/verify-migration-workflow.yml` into their migrated repositories if desired.
 
 ### Notes
 - Further doc polish (HOW_TO_GUIDE, TESTING) validated to have no lingering secret parameter references.

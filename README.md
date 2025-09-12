@@ -452,7 +452,7 @@ If branch protection API returns 404 despite repo visibility, ensure the token h
 
 #### GitHub Action Automation
 
-A reusable workflow (`.github/workflows/verify-migration.yml`) is included. It triggers on pushes changing migration reports or the script, or via manual dispatch:
+An example reusable workflow (`examples/verify-migration-workflow.yml`) is provided. Copy it to `.github/workflows/verify-migration.yml` in a target repository **you are migrating**, not this tool's repository, if you want automated verification. It triggers on pushes changing migration reports or the script, or via manual dispatch:
 
 Manual dispatch inputs:
 | Input | Description |
