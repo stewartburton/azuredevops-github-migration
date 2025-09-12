@@ -1135,8 +1135,10 @@ class MigrationOrchestrator:
                             if changes:
                                 # Ensure git user identity
                                 if subprocess.run(['git', '-C', temp_clone_dir, 'config', '--get', 'user.email'], capture_output=True).returncode != 0:
-                                    subprocess.run(['git', '-C', temp_clone_dir, 'config', 'user.email', 'migration-tool@local'], capture_output=True)
-                                    subprocess.run(['git', '-C', temp_clone_dir, 'config', 'user.name', 'ADO-GH Migration Tool'], capture_output=True)
+                                    git_user_email = os.environ.get('GIT_USER_EMAIL', 'azuredevops-github-migration[bot]@users.noreply.github.com')
+                                    git_user_name = os.environ.get('GIT_USER_NAME', 'ADO-GH Migration Tool')
+                                    subprocess.run(['git', '-C', temp_clone_dir, 'config', 'user.email', git_user_email], capture_output=True)
+                                    subprocess.run(['git', '-C', temp_clone_dir, 'config', 'user.name', git_user_name], capture_output=True)
                                 add_res = subprocess.run(['git', '-C', temp_clone_dir, 'add', '.github/workflows'], capture_output=True, text=True)
                                 if add_res.returncode != 0:
                                     self.logger.warning(f"Failed to stage workflows: {add_res.stderr.strip()}")
