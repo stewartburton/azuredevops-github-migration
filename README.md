@@ -240,6 +240,12 @@ GITHUB_ORGANIZATION=your-github-org              # alias: GITHUB_ORG
 
 If both a canonical name and an alias are set the canonical name wins. The tool will attempt to load the `.env` file automatically for every command (without overwriting variables already set in your shell session).
 
+Security & version control:
+* `.env` is intentionally git‑ignored (see `.gitignore`).
+* To change the default template for new contributors, edit `.env.example` – not someone’s personal `.env`.
+* Never commit real tokens; rotate immediately if you do.
+* CI/CD should inject secrets via environment or secrets manager, not by committing a `.env` file.
+
 ### Pre‑Flight Diagnostics & Environment Audit (`doctor`)
 
 Run a fast, side‑effect‑free health check at any time:
