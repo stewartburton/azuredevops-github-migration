@@ -52,9 +52,17 @@ def run_update_env(path: str = '.env') -> int:
     # Ensure a stub .env exists so script doesn't fail prematurely
     if not os.path.exists(path):
         with open(path, 'w', encoding='utf-8') as f:
-            f.write('# Auto-created .env stub -- fill in values or re-run update-env\n')
-            f.write('AZURE_DEVOPS_PAT=\nGITHUB_TOKEN=\nAZURE_DEVOPS_ORGANIZATION=\nGITHUB_ORGANIZATION=\n')
-        print(f"Created stub {path}. Populate credential values or re-run to load.")
+            f.write('# Auto-created .env stub -- fill in values. Never commit real secrets.\n')
+            f.write('# Required tokens\n')
+            f.write('AZURE_DEVOPS_PAT=\n')
+            f.write('GITHUB_TOKEN=\n')
+            f.write('\n# Organization slugs (aliases: AZURE_DEVOPS_ORG / GITHUB_ORG)\n')
+            f.write('AZURE_DEVOPS_ORGANIZATION=\n')
+            f.write('GITHUB_ORGANIZATION=\n')
+            f.write('\n# Optional custom endpoints (usually leave default)\n')
+            f.write('# AZURE_DEVOPS_BASE_URL=https://dev.azure.com\n')
+            f.write('# GITHUB_BASE_URL=https://api.github.com\n')
+        print(f"Created stub {path}. Populate credential and organization values, then re-run update-env.")
 
     shell_cmd = _find_powershell()
     if not shell_cmd:
