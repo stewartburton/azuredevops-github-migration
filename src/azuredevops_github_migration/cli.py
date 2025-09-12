@@ -22,6 +22,8 @@ Commands:
     analyze     Analyze Azure DevOps organization  
     batch       Batch migrate multiple repositories
     doctor      Run environment & configuration diagnostics
+    update-env  Run Test-MigrationEnv.ps1 to load/update .env variables
+    interactive Launch arrow-key interactive menu (requires questionary)
     help        Show this help message
     version     Show version information
 
@@ -113,6 +115,12 @@ def main(args: Optional[List[str]] = None):
             if global_debug and '--debug' not in args:
                 return quick_main(['--debug'] + args[1:])
             return quick_main(args[1:])
+        elif command == 'update-env':
+            from .interactive import run_update_env
+            return run_update_env()
+        elif command == 'interactive':
+            from .interactive import interactive_menu
+            return interactive_menu()
         else:
             print(f"Unknown command: {command}")
             print("Run 'azuredevops-github-migration help' for usage information")

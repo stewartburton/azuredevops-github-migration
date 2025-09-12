@@ -13,6 +13,7 @@ import shutil
 import socket
 import platform
 import argparse
+from pathlib import Path
 
 # --- Internal helpers for optional .env loading (mirrors migrate/analyze behavior) ---
 def _load_env_file(filename: str = '.env') -> None:
@@ -160,7 +161,48 @@ def _gather_env_audit() -> Dict[str, Any]:
     return audit
 
 
-def gather_diagnostics(config: str) -> Dict[str, Any]:
+def _append_missing_env_placeholders(env_path: str, audit: Dict[str, Any]) -> Dict[str, Any]:
+    """Append placeholder lines for any missing canonical env variables.
+
+    Does not overwrite existing lines; only appends. Returns a dict with keys:
+    {added: [names], path: env_path}
+    """
+    canonical_order = [
+        ("AZURE_DEVOPS_PAT", "your_azure_devops_personal_access_token_here"),
+        ("GITHUB_TOKEN", "your_github_personal_access_token_here"),
+        ("AZURE_DEVOPS_ORGANIZATION", "your_azure_devops_org_here"),
+        ("GITHUB_ORGANIZATION", "your_github_org_here"),
+    ]
+    added: list[str] = []
+    # Ensure file exists
+    path = Path(env_path)
+    existing_lower = set()
+    if path.exists():
+        try:
+            with path.open('r', encoding='utf-8') as f:
+                for line in f:
+                    if '=' in line and not line.strip().startswith('#'):
+                        existing_lower.add(line.split('=',1)[0].strip().lower())
+        except Exception:  # pragma: no cover - non critical
+            pass
+    else:
+        # Create an empty file so we can append
+        path.touch()
+    try:
+        with path.open('a', encoding='utf-8') as f:
+            for name, placeholder in canonical_order:
+                canon_present = audit['variables'][name]['present']
+                # consider alias presence as present for skip? we still want canonical line if alias only
+                # Add if canonical missing (no exact case-insensitive match for name)
+                if not canon_present and name.lower() not in existing_lower:
+                    f.write(f"{name}={placeholder}\n")
+                    added.append(name)
+    except Exception as e:  # pragma: no cover
+        return {"added": added, "path": env_path, "error": str(e)}
+    return {"added": added, "path": env_path}
+
+
+def gather_diagnostics(config: str, fix_env: bool = False) -> Dict[str, Any]:
     # Attempt to load .env early so presence test reflects file contents
     _load_env_file()
     env_audit = _gather_env_audit()
@@ -177,6 +219,8 @@ def gather_diagnostics(config: str) -> Dict[str, Any]:
         },
         "env": env_audit,
     }
+    if fix_env:
+        diag["fix_env"] = _append_missing_env_placeholders('.env', env_audit)
     return diag
 
 
@@ -235,12 +279,22 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Diagnostic utility for migration tool")
     parser.add_argument('--config', default='config.json', help='Config file to validate (json or yaml)')
     parser.add_argument('--json', action='store_true', help='Output JSON only (machine-readable)')
+    parser.add_argument('--fix-env', action='store_true', help='Append missing canonical env variable placeholders to .env')
     args = parser.parse_args(argv)
-    diag = gather_diagnostics(args.config)
+    diag = gather_diagnostics(args.config, fix_env=args.fix_env)
     if args.json:
         print(json.dumps(diag, indent=2))
     else:
         print_human(diag)
+        if args.fix_env and 'fix_env' in diag:
+            added = diag['fix_env'].get('added', [])
+            if added:
+                print(f"Appended placeholders for: {', '.join(added)} → .env")
+            else:
+                if diag['fix_env'].get('error'):
+                    print(f"Failed to append placeholders: {diag['fix_env']['error']}")
+                else:
+                    print("All canonical environment variable placeholders already present.")
     # Exit non-zero if critical failures
     critical_fail = (
         (not diag['package_import']['importable'])

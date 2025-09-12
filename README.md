@@ -58,6 +58,8 @@ pip install -e .
 - **Comprehensive Logging**: Detailed logs and migration reports
 - **Rate Limiting**: Built-in rate limiting to respect API limits
 - **Retry Logic**: Automatic retry on transient failures
+- **Interactive Menu (New)**: Launch an arrow-key driven menu with `azuredevops-github-migration interactive` for common tasks
+- **Environment Loader (New)**: Use `azuredevops-github-migration update-env` to invoke the PowerShell helper and load variables from `.env`
 
 ## 📁 Project Structure
 
@@ -156,6 +158,12 @@ azuredevops-github-migration doctor --config config.json
 # or JSON output
 azuredevops-github-migration doctor --json
 
+# (New) Update / load environment variables from .env via PowerShell script
+azuredevops-github-migration update-env
+
+# (New) Launch interactive arrow-key menu (requires optional dependency `questionary`)
+azuredevops-github-migration interactive
+
 # 2. Analyze your organization (optional)
 azuredevops-github-migration analyze --create-plan  # --config no longer required when using default config.json
 
@@ -239,6 +247,13 @@ GITHUB_ORGANIZATION=your-github-org              # alias: GITHUB_ORG
 ```
 
 If both a canonical name and an alias are set the canonical name wins. The tool will attempt to load the `.env` file automatically for every command (without overwriting variables already set in your shell session).
+
+Important – template change (Sept 2025):
+* Earlier versions of this project shipped a minimal `.env` template containing only `AZURE_DEVOPS_PAT` and `GITHUB_TOKEN`.
+* The template now (and all future `init` runs) includes the two organization variables: `AZURE_DEVOPS_ORGANIZATION` and `GITHUB_ORGANIZATION`.
+* If your existing `.env` predates this change you can simply add those two lines manually (recommended) OR run:
+    * `azuredevops-github-migration doctor --fix-env` – this will append placeholder lines for any missing canonical variables without modifying existing secrets.
+* Aliases (`AZURE_DEVOPS_ORG`, `GITHUB_ORG`) still work for backward compatibility, but the canonical names are preferred and are what new docs & diagnostics display.
 
 Security & version control:
 * `.env` is intentionally git‑ignored (see `.gitignore`).
@@ -349,6 +364,16 @@ Notes:
 
 `doctor` is the simplest cross-platform pre‑flight; the PowerShell helper is ideal for Windows developer onboarding, local verification, or adding a lightweight gate in Azure DevOps / GitHub Actions Windows runners.
 
+Fixing missing environment placeholders (new):
+```
+# Append any missing canonical env variable placeholders (tokens/org names)
+azuredevops-github-migration doctor --fix-env
+
+# Combine with JSON output (added keys shown under fix_env.added)
+azuredevops-github-migration doctor --fix-env --json
+```
+This does NOT overwrite existing secrets or alias values; it only appends placeholder lines for any of the four standard variables that are absent from the `.env` file. If an alias (e.g. `AZURE_DEVOPS_ORG`) exists but the canonical (`AZURE_DEVOPS_ORGANIZATION`) is missing, a placeholder for the canonical name is still appended so future tooling & docs remain consistent.
+
 ### Migration Config
 
 Edit `config.json` to configure:
@@ -363,6 +388,26 @@ Edit `config.json` to configure:
 See the [Configuration Reference](docs/technical/configuration.md) for complete options.
 
 ## Scripts Overview
+
+### Interactive CLI & Environment Loader (New)
+
+Two new convenience commands streamline onboarding and day-to-day usage:
+
+| Command | Purpose | Notes |
+|---------|---------|-------|
+| `azuredevops-github-migration interactive` | Launch arrow-key navigable menu for common actions (init, analyze, migrate, batch, doctor, env update) | Requires optional dependency `questionary` (`pip install questionary`) |
+| `azuredevops-github-migration update-env` | Runs underlying PowerShell helper (`scripts/Test-MigrationEnv.ps1 -Load -Overwrite -Json`) to load / audit env vars | Creates a stub `.env` if missing |
+
+Why use them?
+* Faster onboarding for new contributors (no need to memorize flags immediately)
+* Ensures environment variables are loaded into the current process before running analysis or migrations
+* Reduces copy/paste errors for common workflows
+
+Non-Windows / PowerShell note:
+* `update-env` requires PowerShell (pwsh preferred). If neither `pwsh` nor `powershell` is present, the command exits with an instructional message.
+* The interactive menu works cross-platform; only the `update-env` action within it depends on PowerShell.
+
+Security reminder: `update-env` never writes secret values back to the `.env` file—it only loads values that are already present (or that you manually added) and surfaces masked summaries.
 
 ### `migrate` - Main Migration Command
 

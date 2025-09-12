@@ -66,6 +66,22 @@ azuredevops-github-migration init --template jira-users    # For Jira users (mos
 azuredevops-github-migration init --template full          # Complete migration setup
 
 # Edit the created config.json and .env files with your settings
+
+### (New) Optional Interactive Menu & Environment Loader
+
+After installation you can use two convenience commands to simplify onboarding:
+
+| Command | Purpose | Notes |
+|---------|---------|-------|
+| `azuredevops-github-migration interactive` | Arrow-key menu for common actions (init, analyze, migrate, batch, doctor, env update) | Requires optional dependency `questionary` (`pip install questionary`) |
+| `azuredevops-github-migration update-env` | Invokes PowerShell helper to load & audit environment variables from `.env` | Requires `pwsh` or `powershell` in PATH |
+
+Benefits:
+* Eliminates need to remember commands immediately
+* Ensures environment variables are loaded before running analysis/migration
+* Provides a quick, masked audit of token presence
+
+If PowerShell is not installed the `update-env` command will print guidance and exit; the rest of the interactive menu continues to function (except that option).
 ```
 
 ### Option 2: Automated Setup from Source
@@ -132,9 +148,50 @@ Edit `.env` file with your credentials:
 ```bash
 AZURE_DEVOPS_PAT=your_azure_devops_personal_access_token
 GITHUB_TOKEN=your_github_personal_access_token
+AZURE_DEVOPS_ORGANIZATION=your_azure_devops_org   # (New standard template entry)
+GITHUB_ORGANIZATION=your_github_org               # (New standard template entry)
 ```
 
 **Important**: Never commit these files with real tokens!
+
+Template evolution (September 2025): Earlier versions only included the two token variables. The initialization template now also includes `AZURE_DEVOPS_ORGANIZATION` and `GITHUB_ORGANIZATION` so diagnostics and commands can operate without repeatedly specifying org flags. If your existing `.env` predates this change you can:
+1. Manually add the two lines above, OR
+2. Run `azuredevops-github-migration doctor --fix-env` to append any missing canonical placeholders (it never overwrites existing values).
+
+Alias compatibility: `AZURE_DEVOPS_ORG` and `GITHUB_ORG` remain accepted, but new docs & outputs prefer the canonical names. The `--fix-env` option will still append canonical placeholders even if only an alias is currently present – this is intentional to encourage consistency.
+
+#### (New) Loading Environment Variables Automatically
+
+Instead of manually exporting variables each session you can run:
+
+```bash
+azuredevops-github-migration update-env
+```
+
+This executes the bundled PowerShell script (`scripts/Test-MigrationEnv.ps1 -Load -Overwrite -Json`) which:
+* Loads values from `.env` into the current process environment
+* Outputs a masked JSON summary (consumed internally by the Python wrapper)
+* Creates a stub `.env` if missing, prompting you to fill real values
+
+Within the interactive menu you can select "Update / load .env" to perform the same action using arrow keys.
+
+If you prefer a pure Python diagnostic, use:
+
+```bash
+azuredevops-github-migration doctor
+```
+
+The `doctor` command auto-loads `.env` (without overwriting existing shell values) to report token presence.
+
+Automatic placeholder repair:
+```bash
+# Append any missing canonical env placeholders (tokens/org names)
+azuredevops-github-migration doctor --fix-env
+
+# Produce JSON including fix summary
+azuredevops-github-migration doctor --fix-env --json
+```
+`--fix-env` only appends missing canonical lines; it never removes or edits existing entries, nor does it write back actual secret values you typed in a session.
 
 ## Authentication Setup
 
