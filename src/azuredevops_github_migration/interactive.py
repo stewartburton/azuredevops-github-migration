@@ -111,40 +111,31 @@ def interactive_menu():
     no_icons = bool(os.environ.get('MIGRATION_CLI_NO_ICONS'))
 
     # ANSI color support (questionary does not parse custom [color] tags in titles)
-    ANSI = {
-        'reset': '\x1b[0m',
-        'cyan': '\x1b[36m', 'magenta': '\x1b[35m', 'yellow': '\x1b[33m', 'blue': '\x1b[34m',
-        'green': '\x1b[32m', 'white': '\x1b[37m', 'red': '\x1b[31m'
-    }
-    try:  # Optional colorama for Windows legacy consoles
-        if os.name == 'nt':
-            import colorama  # type: ignore
-            colorama.just_fix_windows_console()  # pragma: no cover
-    except Exception:  # pragma: no cover
-        pass
-
-    def style(txt: str, color: str) -> str:
-        if color_disabled:
-            return txt
-        return f"{ANSI.get(color,'')}{txt}{ANSI['reset']}"
+    # Colors disabled inside menu because questionary does not reliably render ANSI in choices across all environments.
+    # We retain a legend (printed once) if colors are not disabled, purely informational.
+    def style(txt: str, _color: str) -> str:  # stylistic no-op now
+        return txt
 
     ico = (lambda sym: sym if (not no_icons) else '')
 
     # Using explicit Choice objects allows future metadata
     choices = [
-        questionary.Choice(title=f"{ico('🔐 ')}{style('Update / load .env','cyan')}", value='update'),
-        questionary.Choice(title=f"{ico('🩺 ')}{style('Doctor diagnostics','magenta')}", value='doctor'),
-        questionary.Choice(title=f"{ico('🛠  ')}{style('Init configuration files','yellow')}", value='init'),
-        questionary.Choice(title=f"{ico('🔎 ')}{style('Analyze organization','blue')}", value='analyze'),
-        questionary.Choice(title=f"{ico('📦 ')}{style('Batch migrate','green')}", value='batch'),
-        questionary.Choice(title=f"{ico('🚚 ')}{style('Migrate repository','white')}", value='migrate'),
-        questionary.Choice(title=f"{ico('❌ ')}{style('Quit','red')}", value='quit'),
+        questionary.Choice(title=f"{ico('🔐 ')}Update / load .env", value='update'),
+        questionary.Choice(title=f"{ico('🩺 ')}Doctor diagnostics", value='doctor'),
+        questionary.Choice(title=f"{ico('🛠  ')}Init configuration files", value='init'),
+        questionary.Choice(title=f"{ico('🔎 ')}Analyze organization", value='analyze'),
+        questionary.Choice(title=f"{ico('📦 ')}Batch migrate", value='batch'),
+        questionary.Choice(title=f"{ico('🚚 ')}Migrate repository", value='migrate'),
+        questionary.Choice(title=f"{ico('❌ ')}Quit", value='quit'),
     ]
 
     help_footer = (
         "Use arrow keys • Enter to run • ESC/Ctrl+C to abort | Set NO_COLOR=1 to disable colors, "
         "MIGRATION_CLI_NO_ICONS=1 to hide emojis"
     )
+
+    if not color_disabled:
+        print("(Interactive Menu) — Icons indicate action category. Set MIGRATION_CLI_NO_ICONS=1 to disable icons.")
 
     while True:
         selection = questionary.select(
