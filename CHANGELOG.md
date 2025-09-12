@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `-Json` flag for `verify-migration.ps1` to produce machine-readable summary (used by workflow PR comments & artifacts).
 - `exit_code` field embedded in JSON summary for direct consumption by CI systems.
+- `--allow-local-workflows` override flag to intentionally permit local workflow YAML emission (guardrail defaults to blocking local writes).
 
 ### Changed
 - Exit code semantics clarified: `0` success, `2` warnings (non-fatal), `3` fatal (repository inaccessible or configured fail conditions).

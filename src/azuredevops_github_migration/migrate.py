@@ -1091,6 +1091,16 @@ class MigrationOrchestrator:
     def _migrate_pipelines(self, pipelines: List[Dict[str, Any]], github_repo_name: str, dry_run: bool):
         """Convert and migrate Azure DevOps pipelines to GitHub Actions."""
         try:
+            # Guardrail: prevent accidental writing of workflow files into the tool repo unless explicitly allowed
+            try:
+                allow_local = getattr(self, 'args', None) and getattr(self.args, 'allow_local_workflows', False)
+            except Exception:
+                allow_local = False
+            cwd = os.getcwd()
+            # Heuristic: if this looks like the tool source repo (contains pyproject.toml & src/azuredevops_github_migration) and override not set
+            is_tool_repo = os.path.exists(os.path.join(cwd, 'pyproject.toml')) and os.path.isdir(os.path.join(cwd, 'src', 'azuredevops_github_migration'))
+            if is_tool_repo and not allow_local:
+                self.logger.info("[GUARDRAIL] Skipping local workflow file emission (use --allow-local-workflows to override). Workflows will only be pushed to target repository.")
             # Generate workflows in an isolated temp directory to avoid polluting the tool's repository
             temp_gen_dir = tempfile.mkdtemp(prefix='workflow_gen_')
             workflows_dir = os.path.join(temp_gen_dir, '.github', 'workflows')
@@ -1396,6 +1406,8 @@ def main(argv=None):
                        help='Exclude pipelines whose queueStatus is disabled/paused')
     parser.add_argument('--verify-remote', action='store_true',
                        help='After pushing git history, verify remote branches match local')
+    parser.add_argument('--allow-local-workflows', action='store_true',
+                       help='(Guardrail override) Allow writing workflow YAMLs into current working directory .github/workflows (not recommended)')
     
     # Validation options
     parser.add_argument('--validate-only', action='store_true',

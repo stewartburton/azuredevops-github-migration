@@ -47,6 +47,7 @@ pip install -e .
 
 - **Repository Migration**: Clone and migrate Git repositories from Azure DevOps to GitHub with complete history
 - **Pipeline Conversion**: Convert Azure DevOps pipelines to GitHub Actions workflows
+    - Guardrail: The tool no longer writes converted workflow YAML into its own repository. Files are generated in a temp directory and pushed directly to the target repo. Use `--allow-local-workflows` only if you intentionally want local emission (not recommended).
 - **Pipeline Scope Control**: Limit pipeline conversion to only those bound to the repository (`--pipelines-scope repository`) or include all project pipelines (default)
 - **Exclude Disabled Pipelines**: Skip disabled/paused pipelines with `--exclude-disabled-pipelines`
 - **Work Items to Issues** (Optional): Convert Azure DevOps work items to GitHub issues - skip if using Jira/other issue tracking
