@@ -1112,7 +1112,13 @@ class MigrationOrchestrator:
                 self.logger.info(f"[OK] Converted {len(converted_files)} pipelines to GitHub Actions (isolated)")
                 if not dry_run:
                     try:
-                        gh_org = self.github_client.organization or self.github_client.get_user().get('login', 'unknown')
+                        gh_org = self.github_client.organization
+                        if not gh_org:
+                            gh_user = getattr(self, '_cached_github_user', None)
+                            if not gh_user:
+                                gh_user = self.github_client.get_user()
+                                self._cached_github_user = gh_user
+                            gh_org = gh_user.get('login', 'unknown')
                         repo_url = f"https://github.com/{gh_org}/{github_repo_name}.git"
                         self.logger.info(f"Preparing to commit workflows to {repo_url} from isolated directory")
                         temp_clone_dir = tempfile.mkdtemp(prefix='workflow_commit_')
