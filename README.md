@@ -60,6 +60,7 @@ pip install -e .
 - **Retry Logic**: Automatic retry on transient failures
 - **Interactive Menu (New)**: Launch an arrow-key driven menu with `azuredevops-github-migration interactive` for common tasks
 - **Environment Loader (New)**: Use `azuredevops-github-migration update-env` to invoke the PowerShell helper and load variables from `.env`
+- **Doctor Assist (New)**: Use `azuredevops-github-migration doctor --assist` for an interactive remediation submenu (run PowerShell loader, append placeholders, re-run diagnostics)
 
 ## 📁 Project Structure
 
@@ -363,6 +364,20 @@ Notes:
 - To persist updated values back to `.env`, edit the file manually (future enhancement may automate this).
 
 `doctor` is the simplest cross-platform pre‑flight; the PowerShell helper is ideal for Windows developer onboarding, local verification, or adding a lightweight gate in Azure DevOps / GitHub Actions Windows runners.
+
+Interactive remediation (new):
+```
+# Launch diagnostics then open submenu
+azuredevops-github-migration doctor --assist
+
+Submenu options:
+    1) Run PowerShell env loader (equivalent to update-env)
+    2) Append missing canonical placeholders (--fix-env behavior)
+    3) Re-run diagnostics (refresh the view)
+    4) Quit
+
+Placeholders (values beginning with the template prefixes, e.g. your_azure_devops_personal_access_token) are flagged as PLACEHOLDER so you know they still need real values.
+```
 
 Fixing missing environment placeholders (new):
 ```

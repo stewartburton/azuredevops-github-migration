@@ -193,6 +193,22 @@ azuredevops-github-migration doctor --fix-env --json
 ```
 `--fix-env` only appends missing canonical lines; it never removes or edits existing entries, nor does it write back actual secret values you typed in a session.
 
+#### (New) Interactive Remediation Submenu
+
+If you want guided remediation (run loader, append placeholders, re-check):
+
+```bash
+azuredevops-github-migration doctor --assist
+```
+
+Menu options:
+1. Run PowerShell env loader (same as `update-env`)
+2. Append missing canonical placeholders (same as `--fix-env`)
+3. Re-run diagnostics (refresh status)
+4. Quit submenu
+
+Placeholder detection: Any value that still begins with the template prefixes (e.g. `your_azure_devops_personal_access_token`) is treated as a placeholder and shown in the submenu so you can quickly identify incomplete setup.
+
 ## Authentication Setup
 
 Use least privilege. Start with the minimum scopes and add only if the tool reports an authorization error for a feature you actually need.
