@@ -474,7 +474,12 @@ class GitMigrator:
             # Sanitize clone URL (remove any embedded userinfo)
             clone_url = self.sanitize_clone_url(clone_url)
             
-            self.logger.info(f"Starting Git migration: {clone_url} -> GitHub:{github_repo_name}")
+            # Provide clearer destination context (org/repo + expected URL)
+            gh_org = self.github_client.organization or self.github_client.get_user().get('login','unknown')
+            dest_url_preview = f"https://github.com/{gh_org}/{github_repo_name}.git"
+            self.logger.info(
+                f"Starting Git migration: {clone_url} -> GitHub:{gh_org}/{github_repo_name} ({dest_url_preview})"
+            )
             
             if dry_run:
                 self.logger.info("[DRY RUN] Would clone and push repository")
@@ -967,10 +972,18 @@ class MigrationOrchestrator:
             if not github_repo and not dry_run:
                 return False
             
-            # Step 4: Migrate Git history (most critical step)
-            self._update_migration_state("Migrating Git history")
-            if not self._migrate_git_repository(project_name, repo_name, github_repo_name, dry_run):
-                return False
+            # Step 4: Migrate Git history (unless disabled)
+            skip_git = False
+            if hasattr(self, 'args') and getattr(self.args, 'no_git', False):
+                skip_git = True
+                self.logger.info("[SKIP] Git history migration skipped due to --no-git flag")
+            if not skip_git:
+                self._update_migration_state("Migrating Git history")
+                if not self._migrate_git_repository(project_name, repo_name, github_repo_name, dry_run):
+                    return False
+            else:
+                # Still register a completed step for consistency
+                self.migration_state['completed_steps'].append("Skipped Git history (no-git)")
             
             # Step 5: Convert and migrate pipelines
             if migrate_pipelines and azure_data.get('pipelines'):
@@ -1078,16 +1091,80 @@ class MigrationOrchestrator:
     def _migrate_pipelines(self, pipelines: List[Dict[str, Any]], github_repo_name: str, dry_run: bool):
         """Convert and migrate Azure DevOps pipelines to GitHub Actions."""
         try:
-            workflows_dir = '.github/workflows'
-            if not dry_run:
-                os.makedirs(workflows_dir, exist_ok=True)
-            
-            converted_files = self.pipeline_converter.convert_pipelines_to_actions(
-                pipelines, workflows_dir, dry_run
-            )
-            
+            # Guardrail: prevent accidental writing of workflow files into the tool repo unless explicitly allowed
+            try:
+                allow_local = getattr(self, 'args', None) and getattr(self.args, 'allow_local_workflows', False)
+            except Exception:
+                allow_local = False
+            cwd = os.getcwd()
+            # Robust detection: check for marker file '.TOOL_REPO' in the repo root instead of hardcoded paths
+            is_tool_repo = os.path.exists(os.path.join(cwd, '.TOOL_REPO'))
+            if is_tool_repo and not allow_local:
+                self.logger.info("[GUARDRAIL] Skipping local workflow file emission (use --allow-local-workflows to override). Workflows will only be pushed to target repository.")
+            # Generate workflows in an isolated temp directory to avoid polluting the tool's repository
+            temp_gen_dir = tempfile.mkdtemp(prefix='workflow_gen_')
+            workflows_dir = os.path.join(temp_gen_dir, '.github', 'workflows')
+            os.makedirs(workflows_dir, exist_ok=True)
+
+            converted_files = self.pipeline_converter.convert_pipelines_to_actions(pipelines, workflows_dir, dry_run)
+
             if converted_files:
-                self.logger.info(f"[OK] Converted {len(converted_files)} pipelines to GitHub Actions")
+                self.logger.info(f"[OK] Converted {len(converted_files)} pipelines to GitHub Actions (isolated)")
+                if not dry_run:
+                    try:
+                        gh_org = self.github_client.organization
+                        if not gh_org:
+                            gh_user = getattr(self, '_cached_github_user', None)
+                            if not gh_user:
+                                gh_user = self.github_client.get_user()
+                                self._cached_github_user = gh_user
+                            gh_org = gh_user.get('login', 'unknown')
+                        repo_url = f"https://github.com/{gh_org}/{github_repo_name}.git"
+                        self.logger.info(f"Preparing to commit workflows to {repo_url} from isolated directory")
+                        temp_clone_dir = tempfile.mkdtemp(prefix='workflow_commit_')
+                        clone_result = subprocess.run(['git', 'clone', repo_url, temp_clone_dir], capture_output=True, text=True, timeout=600)
+                        if clone_result.returncode != 0:
+                            self.logger.warning(f"Could not clone repo to add workflows: {clone_result.stderr.strip()}")
+                        else:
+                            dest_wf_dir = os.path.join(temp_clone_dir, '.github', 'workflows')
+                            os.makedirs(dest_wf_dir, exist_ok=True)
+                            changes = False
+                            for wf in converted_files:
+                                src_path = os.path.join(workflows_dir, wf)
+                                dst_path = os.path.join(dest_wf_dir, wf)
+                                if os.path.exists(dst_path):
+                                    base, ext = os.path.splitext(wf)
+                                    dst_path = os.path.join(dest_wf_dir, f"{base}-migrated{ext}")
+                                    self.logger.warning(f"Workflow {wf} already exists in target repo – saving as {os.path.basename(dst_path)}")
+                                shutil.copy2(src_path, dst_path)
+                                changes = True
+                            if changes:
+                                # Ensure git user identity
+                                if subprocess.run(['git', '-C', temp_clone_dir, 'config', '--get', 'user.email'], capture_output=True).returncode != 0:
+                                    git_user_email = os.environ.get('GIT_USER_EMAIL', 'azuredevops-github-migration[bot]@users.noreply.github.com')
+                                    git_user_name = os.environ.get('GIT_USER_NAME', 'ADO-GH Migration Tool')
+                                    subprocess.run(['git', '-C', temp_clone_dir, 'config', 'user.email', git_user_email], capture_output=True)
+                                    subprocess.run(['git', '-C', temp_clone_dir, 'config', 'user.name', git_user_name], capture_output=True)
+                                add_res = subprocess.run(['git', '-C', temp_clone_dir, 'add', '.github/workflows'], capture_output=True, text=True)
+                                if add_res.returncode != 0:
+                                    self.logger.warning(f"Failed to stage workflows: {add_res.stderr.strip()}")
+                                else:
+                                    commit_res = subprocess.run(['git', '-C', temp_clone_dir, 'commit', '-m', 'Add converted Azure DevOps pipelines as GitHub Actions workflows'], capture_output=True, text=True)
+                                    if commit_res.returncode == 0:
+                                        push_res = subprocess.run(['git', '-C', temp_clone_dir, 'push'], capture_output=True, text=True)
+                                        if push_res.returncode == 0:
+                                            self.logger.info("[OK] Workflow files committed and pushed to GitHub")
+                                        else:
+                                            self.logger.warning(f"Failed to push workflows: {push_res.stderr.strip()}")
+                                    else:
+                                        combined = (commit_res.stdout + commit_res.stderr).lower()
+                                        if 'nothing to commit' in combined:
+                                            self.logger.info("No workflow changes to commit (already present)")
+                                        else:
+                                            self.logger.warning(f"Failed to commit workflows: {commit_res.stderr.strip()}")
+                    except Exception as wf_err:
+                        self.logger.warning(f"Could not auto-commit workflows: {wf_err}")
+            # No files are left behind in the tool repo.
             
         except Exception as e:
             self.logger.error(f"Pipeline migration failed: {str(e)}")
@@ -1186,7 +1263,7 @@ class MigrationOrchestrator:
                 'work_items_count': len(azure_data.get('work_items', [])),
                 'pull_requests_count': len(azure_data.get('pull_requests', [])),
                 'pipelines_count': len(azure_data.get('pipelines', [])),
-                'git_history_migrated': not dry_run,
+                'git_history_migrated': (not dry_run) and not (hasattr(self, 'args') and getattr(self.args, 'no_git', False)),
                 'pipelines_converted': len(azure_data.get('pipelines', [])) > 0
             },
             'verification': remote_verification,
@@ -1276,10 +1353,20 @@ class MigrationOrchestrator:
         return results
 
 
-def main():
-    """Main entry point for the production-ready migration tool."""
+def main(argv=None):
+    """Main entry point for the production-ready migration tool.
+
+    Accepts an optional argv list so the top-level cli wrapper can call
+    migrate.main(args[1:]) without Python injecting those arguments as a
+    positional parameter, fixing the error: main() takes 0 positional
+    arguments but 1 was given.
+    """
     import argparse
-    
+
+    if argv is None:
+        import sys
+        argv = sys.argv[1:]
+
     parser = argparse.ArgumentParser(
         description='Azure DevOps to GitHub Migration Tool - Production Ready',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1327,6 +1414,8 @@ def main():
                        help='Exclude pipelines whose queueStatus is disabled/paused')
     parser.add_argument('--verify-remote', action='store_true',
                        help='After pushing git history, verify remote branches match local')
+    parser.add_argument('--allow-local-workflows', action='store_true',
+                       help='(Guardrail override) Allow writing workflow YAMLs into current working directory .github/workflows (not recommended)')
     
     # Validation options
     parser.add_argument('--validate-only', action='store_true',
@@ -1339,12 +1428,16 @@ def main():
                        help='List available Azure DevOps projects')
     parser.add_argument('--list-repos', 
                        help='List repositories in specified project')
+    parser.add_argument('--list-pipelines', 
+                       help='List all pipelines in specified project (pass project name)')
+    parser.add_argument('--list-pipelines-repo', nargs=2, metavar=('PROJECT','REPO'),
+                       help='List pipelines referencing a specific repository (provide PROJECT REPO)')
     
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     
     try:
         # Handle utility commands first
-        if args.list_projects or args.list_repos:
+        if args.list_projects or args.list_repos or args.list_pipelines or args.list_pipelines_repo:
             return handle_list_commands(args)
 
         # Initialize orchestrator
@@ -1442,6 +1535,37 @@ def handle_list_commands(args) -> int:
                 print(f"• {repo['name']} ({size_mb:.1f} MB)")
                 if repo.get('defaultBranch'):
                     print(f"  Default branch: {repo['defaultBranch']}")
+            return 0
+
+        if args.list_pipelines:
+            project = args.list_pipelines
+            pipelines = orchestrator.azure_client.get_pipelines(project)
+            print(f"\nFound {len(pipelines)} pipelines in project '{project}':")
+            print("-" * 50)
+            for p in pipelines:
+                name = p.get('name','<unnamed>')
+                pid = p.get('id')
+                qs = str(p.get('queueStatus',''))
+                disabled = qs.lower() in {'disabled','paused'}
+                print(f"• {name} (id={pid}) queueStatus={qs}{' [DISABLED]' if disabled else ''}")
+            return 0
+
+        if args.list_pipelines_repo:
+            project, repo_name = args.list_pipelines_repo
+            repos = orchestrator.azure_client.get_repositories(project)
+            repo = next((r for r in repos if r['name'] == repo_name), None)
+            if not repo:
+                print(f"[ERROR] Repository '{repo_name}' not found in project '{project}'")
+                return 1
+            pipelines = orchestrator.azure_client.get_pipelines_for_repo(project, repo['id'])
+            print(f"\nFound {len(pipelines)} pipelines in project '{project}' referencing repo '{repo_name}':")
+            print("-" * 50)
+            for p in pipelines:
+                name = p.get('name','<unnamed>')
+                pid = p.get('id')
+                qs = str(p.get('queueStatus',''))
+                disabled = qs.lower() in {'disabled','paused'}
+                print(f"• {name} (id={pid}) queueStatus={qs}{' [DISABLED]' if disabled else ''}")
             return 0
             
     except Exception as e:

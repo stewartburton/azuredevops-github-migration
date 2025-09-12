@@ -47,6 +47,7 @@ pip install -e .
 
 - **Repository Migration**: Clone and migrate Git repositories from Azure DevOps to GitHub with complete history
 - **Pipeline Conversion**: Convert Azure DevOps pipelines to GitHub Actions workflows
+    - Guardrail: The tool no longer writes converted workflow YAML into its own repository. Files are generated in a temp directory and pushed directly to the target repo. Use `--allow-local-workflows` only if you intentionally want local emission (not recommended).
 - **Pipeline Scope Control**: Limit pipeline conversion to only those bound to the repository (`--pipelines-scope repository`) or include all project pipelines (default)
 - **Exclude Disabled Pipelines**: Skip disabled/paused pipelines with `--exclude-disabled-pipelines`
 - **Work Items to Issues** (Optional): Convert Azure DevOps work items to GitHub issues - skip if using Jira/other issue tracking
@@ -150,6 +151,11 @@ cp .env.example .env
 # 1. Validate your setup
 azuredevops-github-migration migrate --validate-only --config config.json
 
+# (New) Run diagnostics / environment health check
+azuredevops-github-migration doctor --config config.json
+# or JSON output
+azuredevops-github-migration doctor --json
+
 # 2. Analyze your organization (optional)
 azuredevops-github-migration analyze --create-plan --config config.json
 
@@ -158,6 +164,9 @@ azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --dr
 
 # 4. Actual migration (Jira users - most common)
 azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --no-issues --config config.json
+
+# Skip Git history (create target repo + optionally pipelines/issues only)
+azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --no-git --config config.json
 
 # Repository-only pipelines (instead of all project pipelines)
 azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --pipelines-scope repository --config config.json
@@ -208,6 +217,8 @@ Notes:
 * `--skip-work-items` both avoids Work Item API calls and removes work item statistics & `migrate_issues` flags from the analysis output and plan.
 * In batch mode: if a plan omits `migrate_issues`, the tool defaults those entries to `False`.
 * In single migrations: if your config has `"migrate_work_items": false`, issues are auto-disabled (even without `--no-issues`). Add `--no-issues` only for explicit clarity.
+ * `--no-git` skips mirror cloning/pushing; useful for testing pipeline or issue conversion only.
+ * `doctor` command helps diagnose path/import, git availability, network reachability, and token presence.
 
 ## Configuration
 
@@ -351,6 +362,116 @@ Contains helper functions for:
 - **[examples/jira-users-config.json](examples/jira-users-config.json)** - Optimized for Jira users (most common)
 - **[examples/full-migration-config.json](examples/full-migration-config.json)** - Complete migration with work items
 - **[examples/sample-migration-plan.json](examples/sample-migration-plan.json)** - Batch migration template
+
+## ✅ Post-Migration Verification
+
+After each repository migration, validate success before announcing cutover. A detailed checklist lives in `docs/user-guide/POST_MIGRATION_CHECKLIST.md`.
+
+### Scripted Verification (Recommended)
+Use the helper script for a reproducible, machine-friendly summary:
+```powershell
+./scripts/verify-migration.ps1 -Org bet01 -Repo Rick
+```
+JSON output (for pipelines / dashboards):
+```powershell
+./scripts/verify-migration.ps1 -Org bet01 -Repo Rick -Json | ConvertFrom-Json
+```
+Exit codes: 0 = all good, 2 = warnings (non-fatal), 3 = fatal (repo inaccessible).
+
+Quick verification (PowerShell – adjust variables):
+```powershell
+$Org = 'bet01'
+$Repo = 'Rick'
+# Repo metadata
+Invoke-RestMethod "https://api.github.com/repos/$Org/$Repo" | Select-Object name, default_branch, visibility
+# Branches & tags
+Invoke-RestMethod "https://api.github.com/repos/$Org/$Repo/branches?per_page=100" | Select-Object name | Sort-Object name
+Invoke-RestMethod "https://api.github.com/repos/$Org/$Repo/tags?per_page=100" | Select-Object name
+# Workflows present?
+Invoke-RestMethod "https://api.github.com/repos/$Org/$Repo/contents/.github/workflows" | Select-Object name, path
+# Latest workflow runs
+Invoke-RestMethod "https://api.github.com/repos/$Org/$Repo/actions/runs?per_page=3" | Select-Object -ExpandProperty workflow_runs | Select-Object name, status, conclusion, run_number | Format-Table
+# Latest migration report summary (run inside repo root)
+$latest = Get-ChildItem .\migration_reports -Filter "migration_report_*_${Repo}_*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($latest) { (Get-Content $latest.FullName -Raw | ConvertFrom-Json) | Select-Object repository, project, pipelines_converted, branches_migrated, commits_migrated, issues_migrated }
+```
+
+If Git history was skipped (used `--no-git`), skip commit parity checks. Otherwise optionally mirror-clone and compare commit counts. See the full checklist for extended validation, issue migration checks, and sign‑off record.
+
+### Advanced Automated Verification Additions
+
+The verification script now supports deeper governance & quality checks and can be run locally or via a GitHub Action.
+
+Key advanced capabilities:
+
+| Feature | Parameters | Description |
+|---------|------------|-------------|
+| Branch Protection | `-CheckBranchProtection -BranchProtectionBranches main,release/*` | Verifies specified (or default) branches have protection enabled. Wildcards not expanded via API—list explicit branch names. |
+| Tag Parity | `-ExpectedTagCount 42` or auto-detected | Compares enumerated tag count against expected (auto-filled from migration report `tags_count` if present). |
+| Workflow Lint | `-LintWorkflows` | Basic structural lint: presence of `on:` and `jobs:` blocks, merge conflict markers, fetch failures. |
+| Exit Control | `-FailOnBranchProtection -FailOnLintErrors -FailOnTagMismatch` | Promote specific discrepancies to fatal errors (exit 3). |
+| Global Downgrade | `-WarnInsteadOfFail` | Downgrades any failing category (after detection) into warnings to keep pipeline green. |
+| Summary File | `-SummaryFile verification-summary.json` | Writes full JSON to a static file (useful for artifacts). |
+
+#### Example Local Runs
+Branch protection + lint, fail hard on any issue:
+```powershell
+./scripts/verify-migration.ps1 -Org bet01 -Repo Rick `
+    -CheckBranchProtection -BranchProtectionBranches main `
+    -LintWorkflows `
+    -FailOnBranchProtection -FailOnLintErrors
+```
+
+Tag parity with explicit count and write summary file (warnings only):
+```powershell
+./scripts/verify-migration.ps1 -Org bet01 -Repo Rick `
+    -ExpectedTagCount 12 -LintWorkflows -WarnInsteadOfFail -SummaryFile verify.json -Json
+```
+
+Auto-detect expected tags from migration report (no explicit `-ExpectedTagCount` needed):
+```powershell
+./scripts/verify-migration.ps1 -Org bet01 -Repo Rick -LintWorkflows
+```
+
+#### Exit Codes (Extended Semantics)
+
+| Code | Meaning |
+|------|---------|
+| 0 | All checks passed (or only info-level outputs) |
+| 2 | Non-fatal warnings (missing optional components, downgraded failures) |
+| 3 | Fatal condition (repo inaccessible OR selected FailOn* category triggered) |
+
+#### PAT Scopes for Advanced Checks
+
+| Feature | Additional GitHub Scope Needed? |
+|---------|---------------------------------|
+| Repo / Branch / Tags / Contents | `repo` covers it |
+| Branch Protection Read | Usually included with `repo` (fine‑grained: Repository administration: Read) |
+| Workflow Files / Runs | `repo` |
+
+If branch protection API returns 404 despite repo visibility, ensure the token has repository administration read permission (fine‑grained tokens) or classic `repo` scope.
+
+#### GitHub Action Automation
+
+No migration-generated workflows are stored in this tool repository. An example reusable workflow (`examples/verify-migration-workflow.yml`) is provided—copy it into the **target migrated repository** as `.github/workflows/verify-migration.yml` if you want automated verification. Do **not** add converted pipeline workflows to the tool repo; they belong only in destination repos. The example triggers on pushes changing migration reports or the script, or via manual dispatch:
+
+Manual dispatch inputs:
+| Input | Description |
+|-------|-------------|
+| org | Target org/owner (defaults to repo owner if omitted) |
+| repo | Target repository (defaults to current) |
+
+The workflow:
+1. Runs the PowerShell script in JSON mode.
+2. Writes `verification-summary.json` as an artifact.
+3. Posts a PR comment (if run within a PR) with truncated JSON summary.
+4. Fails the job only if the script exit code maps to fatal (3) after considering selected fail flags.
+
+To integrate into a migration PR, dispatch the workflow with desired inputs or let it auto-run when a new migration report is committed.
+
+Fine‑tune behavior by editing the workflow and adding additional arguments (e.g. `-LintWorkflows`, `-CheckBranchProtection`).
+
+---
 
 ## Authentication
 

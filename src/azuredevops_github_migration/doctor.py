@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""Diagnostic command (doctor) for Azure DevOps to GitHub Migration Tool.
+
+Provides quick environment and configuration health checks to help users
+troubleshoot installation or runtime issues.
+"""
+
+from __future__ import annotations
+
+import os
+import json
+import shutil
+import socket
+import platform
+import argparse
+
+# --- Internal helpers for optional .env loading (mirrors migrate/analyze behavior) ---
+def _load_env_file(filename: str = '.env') -> None:
+    """Load simple KEY=VALUE pairs from a .env file if present.
+
+    This allows `doctor` to report token presence without requiring the user
+    to manually export environment variables first. Intentionally lightweight
+    (no extra dependency) and ignores malformed lines.
+    """
+    try:
+        if not os.path.exists(filename):
+            return
+        with open(filename, 'r', encoding='utf-8') as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip().strip("'").strip('"')
+                # Do not overwrite if already set in environment
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except Exception as e:  # pragma: no cover - non critical path
+        print(f"[WARN] Unable to load .env file: {e}")
+from typing import Dict, Any
+
+try:  # Local imports guarded so doctor works even if partial install
+    from . import __version__
+except Exception:  # pragma: no cover
+    __version__ = "unknown"
+
+
+def check_python() -> Dict[str, Any]:
+    import sys
+    return {
+        "executable": sys.executable,
+        "version": sys.version,
+        "cwd": os.getcwd(),
+        "path_entries": len(sys.path),
+    }
+
+
+def check_package_import() -> Dict[str, Any]:
+    result: Dict[str, Any] = {"importable": True}
+    try:
+        import azuredevops_github_migration  # noqa: F401
+    except Exception as e:  # pragma: no cover - only hit on broken installs
+        result["importable"] = False
+        result["error"] = str(e)
+    return result
+
+
+def check_git() -> Dict[str, Any]:
+    import subprocess
+    info: Dict[str, Any] = {"found": False}
+    git_path = shutil.which("git")
+    if git_path:
+        info["found"] = True
+        info["path"] = git_path
+        try:
+            out = subprocess.run([git_path, "--version"], capture_output=True, text=True, timeout=10)
+            info["version_output"] = out.stdout.strip() or out.stderr.strip()
+        except Exception as e:  # pragma: no cover
+            info["error"] = str(e)
+    return info
+
+
+def check_network_host(host: str, port: int = 443, timeout: float = 2.5) -> Dict[str, Any]:
+    s = socket.socket()
+    s.settimeout(timeout)
+    result = {"host": host, "port": port, "reachable": False}
+    try:
+        s.connect((host, port))
+        result["reachable"] = True
+    except Exception as e:  # pragma: no cover
+        result["error"] = str(e)
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
+    return result
+
+
+def check_config_file(config_path: str) -> Dict[str, Any]:
+    data: Dict[str, Any] = {"exists": os.path.exists(config_path), "path": config_path}
+    if data["exists"]:
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                if config_path.endswith(".json"):
+                    json.load(f)
+                else:
+                    try:
+                        import yaml  # type: ignore
+                    except ImportError:
+                        data["parse_ok"] = False
+                        data["error"] = (
+                            "PyYAML is required to parse YAML config files. "
+                            "Please install it with 'pip install pyyaml'."
+                        )
+                        return data
+                    yaml.safe_load(f)
+            data["parse_ok"] = True
+        except Exception as e:
+            data["parse_ok"] = False
+            data["error"] = str(e)
+    return data
+
+
+def gather_diagnostics(config: str) -> Dict[str, Any]:
+    # Attempt to load .env early so presence test reflects file contents
+    _load_env_file()
+    diag: Dict[str, Any] = {
+        "tool_version": __version__,
+        "platform": platform.platform(),
+        "python": check_python(),
+        "package_import": check_package_import(),
+        "git": check_git(),
+        "config": check_config_file(config),
+        "network": {
+            "github_api": check_network_host("api.github.com"),
+            "azure_devops": check_network_host("dev.azure.com"),
+        },
+        "env_tokens_present": {
+            "AZURE_DEVOPS_PAT": bool(os.getenv("AZURE_DEVOPS_PAT")),
+            "GITHUB_TOKEN": bool(os.getenv("GITHUB_TOKEN")),
+        },
+    }
+    return diag
+
+
+def print_human(diag: Dict[str, Any]):
+    print("Azure DevOps → GitHub Migration Tool Diagnostics")
+    print("=" * 60)
+    print(f"Version: {diag['tool_version']}")
+    print(f"Platform: {diag['platform']}")
+    print("Python:")
+    print(f"  Executable: {diag['python']['executable']}")
+    print(f"  Version: {diag['python']['version'].splitlines()[0]}")
+    print(f"  sys.path entries: {diag['python']['path_entries']}")
+    print("Package Import:")
+    if diag['package_import']['importable']:
+        print("  Status: OK (module importable)")
+    else:
+        print("  Status: FAIL")
+        print(f"  Error: {diag['package_import'].get('error')}")
+    print("Git:")
+    if diag['git']['found']:
+        print(f"  Found: {diag['git']['path']}")
+        print(f"  Version: {diag['git'].get('version_output','?')}")
+    else:
+        print("  Not found in PATH – required for migrations")
+    print("Config:")
+    if diag['config']['exists']:
+        status = "OK" if diag['config'].get('parse_ok') else 'PARSE ERROR'
+        print(f"  {diag['config']['path']} → {status}")
+        if diag['config'].get('error'):
+            print(f"  Error: {diag['config']['error']}")
+    else:
+        print(f"  Missing: {diag['config']['path']}")
+    print("Environment Tokens:")
+    for k, v in diag['env_tokens_present'].items():
+        print(f"  {k}: {'SET' if v else 'MISSING'}")
+    print("Network Reachability (TCP 443):")
+    for name, res in diag['network'].items():
+        if res['reachable']:
+            print(f"  {name}: reachable")
+        else:
+            print(f"  {name}: UNREACHABLE ({res.get('error','?')})")
+    print("=" * 60)
+    if not diag['package_import']['importable']:
+        print("Package import failed — try reinstall: pip install --force-reinstall azuredevops-github-migration")
+    if not diag['git']['found']:
+        print("Install Git and ensure it is on your PATH.")
+    if not diag['config']['exists']:
+        print("Initialize a config: azuredevops-github-migration init --template jira-users")
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Diagnostic utility for migration tool")
+    parser.add_argument('--config', default='config.json', help='Config file to validate (json or yaml)')
+    parser.add_argument('--json', action='store_true', help='Output JSON only (machine-readable)')
+    args = parser.parse_args(argv)
+    diag = gather_diagnostics(args.config)
+    if args.json:
+        print(json.dumps(diag, indent=2))
+    else:
+        print_human(diag)
+    # Exit non-zero if critical failures
+    critical_fail = (not diag['package_import']['importable']) or (not diag['git']['found'])
+    return 1 if critical_fail else 0
+
+
+if __name__ == '__main__':  # pragma: no cover
+    raise SystemExit(main())

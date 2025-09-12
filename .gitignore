@@ -65,3 +65,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+tmp_rick_check/
+.github/workflows/*.yml
+.github/workflows/*.yaml
