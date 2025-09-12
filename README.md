@@ -58,6 +58,8 @@ pip install -e .
 - **Comprehensive Logging**: Detailed logs and migration reports
 - **Rate Limiting**: Built-in rate limiting to respect API limits
 - **Retry Logic**: Automatic retry on transient failures
+- **Interactive Menu (New)**: Launch an arrow-key driven menu with `azuredevops-github-migration interactive` for common tasks
+- **Environment Loader (New)**: Use `azuredevops-github-migration update-env` to invoke the PowerShell helper and load variables from `.env`
 
 ## 📁 Project Structure
 
@@ -155,6 +157,12 @@ azuredevops-github-migration migrate --validate-only --config config.json
 azuredevops-github-migration doctor --config config.json
 # or JSON output
 azuredevops-github-migration doctor --json
+
+# (New) Update / load environment variables from .env via PowerShell script
+azuredevops-github-migration update-env
+
+# (New) Launch interactive arrow-key menu (requires optional dependency `questionary`)
+azuredevops-github-migration interactive
 
 # 2. Analyze your organization (optional)
 azuredevops-github-migration analyze --create-plan  # --config no longer required when using default config.json
@@ -363,6 +371,26 @@ Edit `config.json` to configure:
 See the [Configuration Reference](docs/technical/configuration.md) for complete options.
 
 ## Scripts Overview
+
+### Interactive CLI & Environment Loader (New)
+
+Two new convenience commands streamline onboarding and day-to-day usage:
+
+| Command | Purpose | Notes |
+|---------|---------|-------|
+| `azuredevops-github-migration interactive` | Launch arrow-key navigable menu for common actions (init, analyze, migrate, batch, doctor, env update) | Requires optional dependency `questionary` (`pip install questionary`) |
+| `azuredevops-github-migration update-env` | Runs underlying PowerShell helper (`scripts/Test-MigrationEnv.ps1 -Load -Overwrite -Json`) to load / audit env vars | Creates a stub `.env` if missing |
+
+Why use them?
+* Faster onboarding for new contributors (no need to memorize flags immediately)
+* Ensures environment variables are loaded into the current process before running analysis or migrations
+* Reduces copy/paste errors for common workflows
+
+Non-Windows / PowerShell note:
+* `update-env` requires PowerShell (pwsh preferred). If neither `pwsh` nor `powershell` is present, the command exits with an instructional message.
+* The interactive menu works cross-platform; only the `update-env` action within it depends on PowerShell.
+
+Security reminder: `update-env` never writes secret values back to the `.env` file—it only loads values that are already present (or that you manually added) and surfaces masked summaries.
 
 ### `migrate` - Main Migration Command
 

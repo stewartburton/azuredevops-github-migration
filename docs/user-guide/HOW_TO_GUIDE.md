@@ -66,6 +66,22 @@ azuredevops-github-migration init --template jira-users    # For Jira users (mos
 azuredevops-github-migration init --template full          # Complete migration setup
 
 # Edit the created config.json and .env files with your settings
+
+### (New) Optional Interactive Menu & Environment Loader
+
+After installation you can use two convenience commands to simplify onboarding:
+
+| Command | Purpose | Notes |
+|---------|---------|-------|
+| `azuredevops-github-migration interactive` | Arrow-key menu for common actions (init, analyze, migrate, batch, doctor, env update) | Requires optional dependency `questionary` (`pip install questionary`) |
+| `azuredevops-github-migration update-env` | Invokes PowerShell helper to load & audit environment variables from `.env` | Requires `pwsh` or `powershell` in PATH |
+
+Benefits:
+* Eliminates need to remember commands immediately
+* Ensures environment variables are loaded before running analysis/migration
+* Provides a quick, masked audit of token presence
+
+If PowerShell is not installed the `update-env` command will print guidance and exit; the rest of the interactive menu continues to function (except that option).
 ```
 
 ### Option 2: Automated Setup from Source
@@ -135,6 +151,29 @@ GITHUB_TOKEN=your_github_personal_access_token
 ```
 
 **Important**: Never commit these files with real tokens!
+
+#### (New) Loading Environment Variables Automatically
+
+Instead of manually exporting variables each session you can run:
+
+```bash
+azuredevops-github-migration update-env
+```
+
+This executes the bundled PowerShell script (`scripts/Test-MigrationEnv.ps1 -Load -Overwrite -Json`) which:
+* Loads values from `.env` into the current process environment
+* Outputs a masked JSON summary (consumed internally by the Python wrapper)
+* Creates a stub `.env` if missing, prompting you to fill real values
+
+Within the interactive menu you can select "Update / load .env" to perform the same action using arrow keys.
+
+If you prefer a pure Python diagnostic, use:
+
+```bash
+azuredevops-github-migration doctor
+```
+
+The `doctor` command auto-loads `.env` (without overwriting existing shell values) to report token presence.
 
 ## Authentication Setup
 
