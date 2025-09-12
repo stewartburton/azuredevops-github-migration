@@ -61,6 +61,7 @@ pip install -e .
 - **Interactive Menu (New)**: Launch an arrow-key driven menu with `azuredevops-github-migration interactive` for common tasks
 - **Environment Loader (New)**: Use `azuredevops-github-migration update-env` to invoke the PowerShell helper and load variables from `.env`
 - **Doctor Assist (New)**: Use `azuredevops-github-migration doctor --assist` for an interactive remediation submenu (run PowerShell loader, append placeholders, re-run diagnostics)
+- **.env Editor (New)**: Use `azuredevops-github-migration doctor --edit-env` to interactively edit & persist required environment variables with automatic timestamped backup
 
 ## 📁 Project Structure
 
@@ -164,6 +165,9 @@ azuredevops-github-migration update-env
 
 # (New) Launch interactive arrow-key menu (requires optional dependency `questionary`)
 azuredevops-github-migration interactive
+
+# (New) Interactive .env editor (creates backup then re-runs diagnostics)
+azuredevops-github-migration doctor --edit-env
 
 # 2. Analyze your organization (optional)
 azuredevops-github-migration analyze --create-plan  # --config no longer required when using default config.json
@@ -377,6 +381,28 @@ Submenu options:
     4) Quit
 
 Placeholders (values beginning with the template prefixes, e.g. your_azure_devops_personal_access_token) are flagged as PLACEHOLDER so you know they still need real values.
+
+Interactive .env editing (new):
+```
+# Safely edit required variables (tokens & org slugs) with backup (.env.bak.<UTC timestamp>)
+azuredevops-github-migration doctor --edit-env
+
+# Combine with placeholder append first (if you want canonical lines ensured)
+azuredevops-github-migration doctor --fix-env --edit-env
+```
+Behavior:
+* Prompts for each of the four canonical variables; press Enter to keep existing.
+* Existing token/org values are shown masked (first 4 chars + ****).
+* File ordering & comments are preserved when possible; missing canonical keys appended at end.
+* A timestamped backup (`.env.bak.YYYYmmddHHMMSS`) is created before any write.
+* After saving, diagnostics are re-run so you immediately see the updated environment status.
+* Cannot be combined with `--json` (interactive session).
+
+Difference vs `update-env`:
+| Command | Purpose | Writes to `.env` | Creates Backup | Requires PowerShell |
+|---------|---------|------------------|----------------|--------------------|
+| `update-env` | Load & audit env via PowerShell script | No | No | Yes |
+| `doctor --edit-env` | Edit & persist vars in pure Python | Yes | Yes | No |
 ```
 
 Fixing missing environment placeholders (new):

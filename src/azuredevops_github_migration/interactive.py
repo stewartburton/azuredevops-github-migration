@@ -130,6 +130,7 @@ def interactive_menu():
     choices = [
         questionary.Choice(title=f"{ico('🔐 ')}Update / load .env", value='update'),
         questionary.Choice(title=f"{ico('🩺 ')}Doctor diagnostics", value='doctor'),
+    questionary.Choice(title=f"{ico('🩺 ')}Doctor submenu (assist)", value='doctor_assist'),
         questionary.Choice(title=f"{ico('🛠  ')}Init configuration files", value='init'),
         questionary.Choice(title=f"{ico('🔎 ')}Analyze organization", value='analyze'),
         questionary.Choice(title=f"{ico('📦 ')}Batch migrate", value='batch'),
@@ -164,6 +165,35 @@ def interactive_menu():
             subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'batch'])
         elif key == 'doctor':
             subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor'])
+        elif key == 'doctor_assist':
+            # Offer quick pick: plain, --fix-env, --assist, or both
+            sub = questionary.select(
+                "Doctor mode:",
+                choices=[
+                    questionary.Choice(title="Run diagnostics", value='plain'),
+                    questionary.Choice(title="Diagnostics + append placeholders (--fix-env)", value='fix'),
+                    questionary.Choice(title="Diagnostics + interactive remediation (--assist)", value='assist'),
+                    questionary.Choice(title="Diagnostics + fix + remediation (--fix-env --assist)", value='fix_assist'),
+                    questionary.Choice(title="Edit & save .env (--edit-env)", value='edit_env'),
+                    questionary.Choice(title="Edit .env then remediation (--edit-env --assist)", value='edit_env_assist'),
+                    questionary.Choice(title="Back", value='back'),
+                ],
+                qmark='🩺' if not no_icons else '?'
+            ).ask()
+            if sub == 'plain':
+                subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor'])
+            elif sub == 'fix':
+                subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--fix-env'])
+            elif sub == 'assist':
+                subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--assist'])
+            elif sub == 'fix_assist':
+                subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--fix-env', '--assist'])
+            elif sub == 'edit_env':
+                subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--edit-env'])
+            elif sub == 'edit_env_assist':
+                subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--edit-env', '--assist'])
+            else:
+                continue
         elif key == 'update':
             run_update_env()
         elif key == 'quit':
