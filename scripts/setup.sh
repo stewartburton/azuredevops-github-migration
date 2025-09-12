@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # Azure DevOps to GitHub Migration Tool Setup Script
-# This script sets up the migration tool environment
+# This script creates a virtual environment (if not present), installs the
+# package in editable mode (pip install -e .) and prepares baseline config
+# files and sample artifacts for usage. It also validates the CLI.
 
 set -e  # Exit on any error
 
@@ -77,43 +79,48 @@ check_pip() {
 
 # Create virtual environment
 create_venv() {
-    print_status "Creating virtual environment..."
+    print_status "Ensuring virtual environment exists (./venv)..."
     if [ ! -d "venv" ]; then
-        $PYTHON_CMD -m venv venv
-        if [ $? -eq 0 ]; then
-            print_success "Virtual environment created"
-        else
+        $PYTHON_CMD -m venv venv || {
             print_error "Failed to create virtual environment"
-            print_error "Try: $PYTHON_CMD -m pip install --user virtualenv"
             exit 1
-        fi
+        }
+        print_success "Virtual environment created"
     else
-        print_warning "Virtual environment already exists"
+        print_warning "Virtual environment already exists (reuse)"
     fi
 }
 
 # Activate virtual environment
 activate_venv() {
     print_status "Activating virtual environment..."
-    if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
-        source venv/Scripts/activate
+    # shellcheck disable=SC1091
+    if [ -f "venv/bin/activate" ]; then
+        # Unix / WSL / Git Bash
+        # shellcheck disable=SC1091
+        . venv/bin/activate
+    elif [ -f "venv/Scripts/activate" ]; then
+        # Git Bash on Windows may still source this
+        # shellcheck disable=SC1091
+        . venv/Scripts/activate
     else
-        source venv/bin/activate
+        print_error "Could not locate activation script."
+        exit 1
     fi
-    print_success "Virtual environment activated"
+    print_success "Virtual environment activated (python: $(python -V 2>/dev/null))"
 }
 
 # Install dependencies
-install_dependencies() {
-    print_status "Installing Python dependencies..."
-    if [ -f "requirements.txt" ]; then
-        pip install --upgrade pip
-        pip install -r requirements.txt
-        print_success "Dependencies installed successfully"
+install_package() {
+    print_status "Installing project in editable mode..."
+    pip install --upgrade pip >/dev/null 2>&1 || print_warning "Pip upgrade failed (continuing)"
+    if [ -n "${SETUP_DEV:-}" ]; then
+        print_status "Installing with development extras..."
+        pip install -e .[dev]
     else
-        print_error "requirements.txt not found"
-        exit 1
+        pip install -e .
     fi
+    print_success "Editable install complete"
 }
 
 # Create necessary directories
@@ -128,23 +135,21 @@ create_directories() {
 # Copy configuration template
 setup_config() {
     print_status "Setting up configuration files..."
-    
-    if [ -f "config.template.json" ] && [ ! -f "config.json" ]; then
-        cp config.template.json config.json
-        print_success "Configuration template copied to config.json"
-        print_warning "Please edit config.json with your Azure DevOps and GitHub credentials"
-    elif [ -f "config.json" ]; then
-        print_warning "config.json already exists, skipping template copy"
+    mkdir -p config
+    if [ -f "config/config.template.json" ] && [ ! -f "config/config.json" ]; then
+        cp config/config.template.json config/config.json
+        print_success "Copied config/config.template.json -> config/config.json"
+        print_warning "Edit config/config.json with your Azure DevOps and GitHub settings"
+    elif [ -f "config/config.json" ]; then
+        print_warning "config/config.json already exists (leaving untouched)"
     else
-        print_error "config.template.json not found"
+        print_warning "config/config.template.json not found (skipping)"
     fi
-    
+
     if [ -f ".env.example" ] && [ ! -f ".env" ]; then
         cp .env.example .env
-        print_success "Environment template copied to .env"
-        print_warning "Please edit .env with your personal access tokens"
-    elif [ -f ".env" ]; then
-        print_warning ".env already exists, skipping template copy"
+        print_success "Copied .env.example -> .env"
+        print_warning "Edit .env with required tokens (AZURE_DEVOPS_PAT / GITHUB_TOKEN)"
     fi
 }
 
@@ -162,40 +167,12 @@ check_git() {
 
 # Validate installation
 validate_installation() {
-    print_status "Validating installation..."
-    
-    # Test Python imports (use the activated environment)
-    python -c "import requests, yaml, json, tqdm" 2>/dev/null
-    if [ $? -eq 0 ]; then
-        print_success "Python dependencies validation passed"
+    print_status "Validating CLI installation..."
+    if azuredevops-github-migration --version >/dev/null 2>&1; then
+        print_success "CLI responds: $(azuredevops-github-migration --version)"
     else
-        print_error "Python dependencies validation failed"
-        print_error "Run: pip install -r requirements.txt"
+        print_error "CLI did not execute correctly. Check installation output above."
         exit 1
-    fi
-    
-    # Check main script
-    if [ -f "migrate.py" ]; then
-        # Test the script can be imported
-        python -c "import migrate" 2>/dev/null
-        if [ $? -eq 0 ]; then
-            print_success "Main migration script validated"
-        else
-            print_warning "Main migration script has import issues (may be normal)"
-        fi
-    else
-        print_error "migrate.py not found"
-        exit 1
-    fi
-    
-    # Test configuration validation
-    if [ -f "config.template.json" ]; then
-        python -c "import json; json.load(open('config.template.json'))" 2>/dev/null
-        if [ $? -eq 0 ]; then
-            print_success "Configuration template is valid JSON"
-        else
-            print_error "Configuration template has JSON syntax errors"
-        fi
     fi
 }
 
@@ -230,26 +207,24 @@ EOF
 
 # Create launcher scripts
 create_launchers() {
-    print_status "Creating launcher scripts..."
-    
-    # Unix/Linux launcher
+    print_status "Creating convenience launcher scripts (wrapping CLI)..."
+
     cat > migrate << 'EOF'
 #!/bin/bash
 cd "$(dirname "$0")"
-source venv/bin/activate 2>/dev/null || source venv/Scripts/activate 2>/dev/null
-python migrate.py "$@"
+if [ -f "venv/bin/activate" ]; then . venv/bin/activate; elif [ -f "venv/Scripts/activate" ]; then . venv/Scripts/activate; fi
+azuredevops-github-migration migrate "$@"
 EOF
-    chmod +x migrate
-    
-    # Batch launcher for Windows
+    chmod +x migrate || true
+
     cat > migrate.bat << 'EOF'
 @echo off
 cd /d "%~dp0"
-call venv\Scripts\activate.bat
-python migrate.py %*
+IF EXIST venv\Scripts\activate.bat call venv\Scripts\activate.bat
+azuredevops-github-migration migrate %*
 EOF
-    
-    print_success "Launcher scripts created (migrate, migrate.bat)"
+
+    print_success "Launcher scripts created (migrate / migrate.bat)"
 }
 
 # Display next steps
@@ -258,29 +233,17 @@ show_next_steps() {
     echo "🎉 Setup completed successfully!"
     echo ""
     echo "📝 Next Steps:"
-    echo "1. Edit config.json with your Azure DevOps and GitHub settings"
-    echo "2. Edit .env with your personal access tokens:"
-    echo "   - AZURE_DEVOPS_PAT: Your Azure DevOps Personal Access Token"
-    echo "   - GITHUB_TOKEN: Your GitHub Personal Access Token"
+    echo "1. Edit config/config.json with Azure DevOps + GitHub settings"
+    echo "2. Provide tokens via environment (export) or .env if supported by your shell wrapper"
+    echo "3. Explore commands:"
+    echo "   azuredevops-github-migration help"
+    echo "   azuredevops-github-migration analyze --create-plan --config config/config.json"
+    echo "   azuredevops-github-migration migrate --project 'MyProject' --repo 'MyRepo' --config config/config.json"
+    echo "   azuredevops-github-migration batch --plan sample_migration_plan.json --config config/config.json"
     echo ""
-    echo "🚀 Usage Examples:"
-    echo "   # Activate virtual environment"
-    echo "   source venv/bin/activate  # Linux/Mac"
-    echo "   venv\\Scripts\\activate.bat    # Windows"
+    echo "🔧 Development mode (you used [dev] extras if --dev): run pytest, flake8, mypy, etc."
     echo ""
-    echo "   # Run single repository migration"
-    echo "   python migrate.py --project 'MyProject' --repo 'my-repo'"
-    echo ""
-    echo "   # Run batch migration"
-    echo "   python batch_migrate.py --plan sample_migration_plan.json"
-    echo ""
-    echo "   # Analyze organization"
-    echo "   python analyze.py --create-plan"
-    echo ""
-    echo "📚 Documentation:"
-    echo "   - README.md: General overview and usage"
-    echo "   - HOW_TO_GUIDE.md: Step-by-step guide"
-    echo "   - docs/: Detailed documentation"
+    echo "📚 Documentation: README.md, docs/user-guide/HOW_TO_GUIDE.md"
     echo ""
     print_success "Happy migrating! 🚀"
 }
@@ -297,7 +260,7 @@ main() {
     check_git
     create_venv
     activate_venv
-    install_dependencies
+    install_package
     create_directories
     setup_config
     validate_installation

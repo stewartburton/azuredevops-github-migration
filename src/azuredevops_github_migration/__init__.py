@@ -7,7 +7,7 @@ and pipelines from Azure DevOps to GitHub with full Git history preservation.
 
 __version__ = "2.1.0"
 __author__ = "Stewart Burton"
-__email__ = "stewart@example.com"
+__email__ = "stewart@stewart-burton.com"
 __license__ = "MIT"
 
 # Import classes only when needed to avoid dependency issues during installation
