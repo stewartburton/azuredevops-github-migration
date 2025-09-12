@@ -88,6 +88,7 @@ azuredevops-github-migration = "azuredevops_github_migration.cli:main"
 ado2gh-migrate = "azuredevops_github_migration.migrate:main"
 ado2gh-analyze = "azuredevops_github_migration.analyze:main"
 ado2gh-batch = "azuredevops_github_migration.batch_migrate:main"
+ado2gh-doctor = "azuredevops_github_migration.doctor:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "azuredevops_github_migration.__version__"}

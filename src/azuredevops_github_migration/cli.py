@@ -16,19 +16,24 @@ Usage:
   azuredevops-github-migration <command> [options]
 
 Commands:
-  init        Initialize configuration files
-  migrate     Migrate a single repository
-  analyze     Analyze Azure DevOps organization  
-  batch       Batch migrate multiple repositories
-  help        Show this help message
-  version     Show version information
+    init        Initialize configuration files
+    migrate     Migrate a single repository or use listing utilities
+    analyze     Analyze Azure DevOps organization  
+    batch       Batch migrate multiple repositories
+    doctor      Run environment & configuration diagnostics
+    help        Show this help message
+    version     Show version information
 
 Examples:
   # Initialize configuration
   azuredevops-github-migration init --template jira-users
   
-  # Migrate single repository
-  azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --config config.json
+    # List projects / repos (note: list flags belong to 'migrate' subcommand)
+    azuredevops-github-migration migrate --list-projects
+    azuredevops-github-migration migrate --list-repos "MyProject"
+
+    # Migrate single repository
+    azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --config config.json
   
   # Analyze organization
   azuredevops-github-migration analyze --create-plan --config config.json
@@ -71,6 +76,9 @@ def main(args: Optional[List[str]] = None):
         elif command == 'batch':
             from .batch_migrate import main as batch_main
             return batch_main(args[1:])
+        elif command == 'doctor':
+            from .doctor import main as doctor_main
+            return doctor_main(args[1:])
         else:
             print(f"Unknown command: {command}")
             print("Run 'azuredevops-github-migration help' for usage information")
