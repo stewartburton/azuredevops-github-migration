@@ -107,9 +107,9 @@ Use this comprehensive checklist before running any Azure DevOps to GitHub migra
 ### Project Analysis
 - [ ] **Organization analysis completed:**
   ```bash
-  azuredevops-github-migration analyze --create-plan --config config.json
+  azuredevops-github-migration analyze --create-plan
   # OR for Jira users (no work items):
-  azuredevops-github-migration analyze --create-plan --config config.json --skip-work-items
+  azuredevops-github-migration analyze --create-plan --skip-work-items
   ```
 - [ ] **Migration plan generated and reviewed**
 - [ ] **Priority repositories identified**

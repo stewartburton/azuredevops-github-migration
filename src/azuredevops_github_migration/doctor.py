@@ -13,7 +13,7 @@ import shutil
 import socket
 import platform
 import argparse
-from typing import Dict, Any, List
+from pathlib import Path
 
 # --- Internal helpers for optional .env loading (mirrors migrate/analyze behavior) ---
 def _load_env_file(filename: str = '.env') -> None:
@@ -39,26 +39,7 @@ def _load_env_file(filename: str = '.env') -> None:
                     os.environ[key] = value
     except Exception as e:  # pragma: no cover - non critical path
         print(f"[WARN] Unable to load .env file: {e}")
-SENSITIVE_ENV_KEYS = [
-    "AZURE_DEVOPS_PAT",
-    "GITHUB_TOKEN",
-]
-
-OPTIONAL_ENV_KEYS = [
-    "AZURE_DEVOPS_ORG",
-    "GITHUB_ORG",
-    "MIGRATION_MAX_CONCURRENT_REPOS",
-    "MIGRATION_API_SLEEP_SECONDS",
-    "LOG_LEVEL",
-]
-
-
-def _mask_value(val: str, show: int = 4) -> str:
-    if not val:
-        return ""
-    if len(val) <= show:
-        return "*" * len(val)
-    return val[:show] + "…" + "*" * (len(val) - show)
+from typing import Dict, Any
 
 try:  # Local imports guarded so doctor works even if partial install
     from . import __version__
@@ -143,18 +124,88 @@ def check_config_file(config_path: str) -> Dict[str, Any]:
     return data
 
 
-def gather_diagnostics(config: str, include_values: bool = False) -> Dict[str, Any]:
+def _gather_env_audit() -> Dict[str, Any]:
+    """Collect environment variable audit similar to Test-MigrationEnv.ps1 (lightweight).
+
+    We consider both canonical and legacy aliases; we don't mutate env here beyond
+    prior optional .env loading. Values are masked in output.
+    """
+    def mask(val: str | None) -> str:
+        if not val:
+            return ""
+        if len(val) <= 8:
+            return "****"
+        return f"{val[:4]}...{val[-4:]}"
+
+    aliases = {
+        "AZURE_DEVOPS_ORGANIZATION": ["AZURE_DEVOPS_ORGANIZATION", "AZURE_DEVOPS_ORG"],
+        "GITHUB_ORGANIZATION": ["GITHUB_ORGANIZATION", "GITHUB_ORG"],
+        "AZURE_DEVOPS_PAT": ["AZURE_DEVOPS_PAT"],
+        "GITHUB_TOKEN": ["GITHUB_TOKEN"],
+    }
+    audit: Dict[str, Any] = {"variables": {}, "all_present": True}
+    for canon, keys in aliases.items():
+        file_present = any(k in os.environ for k in keys)
+        raw_value = None
+        for k in keys:
+            if k in os.environ:
+                raw_value = os.environ.get(k)
+                break
+        audit["variables"][canon] = {
+            "present": bool(raw_value),
+            "masked": mask(raw_value),
+            "aliases_checked": keys,
+        }
+        if not raw_value:
+            audit["all_present"] = False
+    return audit
+
+
+def _append_missing_env_placeholders(env_path: str, audit: Dict[str, Any]) -> Dict[str, Any]:
+    """Append placeholder lines for any missing canonical env variables.
+
+    Does not overwrite existing lines; only appends. Returns a dict with keys:
+    {added: [names], path: env_path}
+    """
+    canonical_order = [
+        ("AZURE_DEVOPS_PAT", "your_azure_devops_personal_access_token_here"),
+        ("GITHUB_TOKEN", "your_github_personal_access_token_here"),
+        ("AZURE_DEVOPS_ORGANIZATION", "your_azure_devops_org_here"),
+        ("GITHUB_ORGANIZATION", "your_github_org_here"),
+    ]
+    added: list[str] = []
+    # Ensure file exists
+    path = Path(env_path)
+    existing_lower = set()
+    if path.exists():
+        try:
+            with path.open('r', encoding='utf-8') as f:
+                for line in f:
+                    if '=' in line and not line.strip().startswith('#'):
+                        existing_lower.add(line.split('=',1)[0].strip().lower())
+        except Exception:  # pragma: no cover - non critical
+            pass
+    else:
+        # Create an empty file so we can append
+        path.touch()
+    try:
+        with path.open('a', encoding='utf-8') as f:
+            for name, placeholder in canonical_order:
+                canon_present = audit['variables'][name]['present']
+                # consider alias presence as present for skip? we still want canonical line if alias only
+                # Add if canonical missing (no exact case-insensitive match for name)
+                if not canon_present and name.lower() not in existing_lower:
+                    f.write(f"{name}={placeholder}\n")
+                    added.append(name)
+    except Exception as e:  # pragma: no cover
+        return {"added": added, "path": env_path, "error": str(e)}
+    return {"added": added, "path": env_path}
+
+
+def gather_diagnostics(config: str, fix_env: bool = False) -> Dict[str, Any]:
     # Attempt to load .env early so presence test reflects file contents
     _load_env_file()
-    env_summary: Dict[str, Any] = {}
-    for key in SENSITIVE_ENV_KEYS + OPTIONAL_ENV_KEYS:
-        raw = os.getenv(key)
-        env_summary[key] = {
-            "present": raw is not None,
-        }
-        if include_values and raw is not None:
-            env_summary[key]["value_masked"] = _mask_value(raw)
-
+    env_audit = _gather_env_audit()
     diag: Dict[str, Any] = {
         "tool_version": __version__,
         "platform": platform.platform(),
@@ -166,13 +217,15 @@ def gather_diagnostics(config: str, include_values: bool = False) -> Dict[str, A
             "github_api": check_network_host("api.github.com"),
             "azure_devops": check_network_host("dev.azure.com"),
         },
-        "environment": env_summary,
+        "env": env_audit,
     }
+    if fix_env:
+        diag["fix_env"] = _append_missing_env_placeholders('.env', env_audit)
     return diag
 
 
-def print_human(diag: Dict[str, Any], print_env: bool = False):
-    print("Azure DevOps to GitHub Migration Tool Diagnostics")
+def print_human(diag: Dict[str, Any]):
+    print("Azure DevOps → GitHub Migration Tool Diagnostics")
     print("=" * 60)
     print(f"Version: {diag['tool_version']}")
     print(f"Platform: {diag['platform']}")
@@ -201,12 +254,12 @@ def print_human(diag: Dict[str, Any], print_env: bool = False):
     else:
         print(f"  Missing: {diag['config']['path']}")
     print("Environment Variables:")
-    for name, meta in diag['environment'].items():
+    for name, meta in diag['env']['variables'].items():
         status = 'SET' if meta['present'] else 'MISSING'
-        if print_env and meta.get('value_masked'):
-            print(f"  {name}: {status} ({meta['value_masked']})")
-        else:
-            print(f"  {name}: {status}")
+        masked = meta['masked'] or '-'
+        print(f"  {name}: {status}  (value: {masked})")
+    if not diag['env']['all_present']:
+        print("  One or more required variables are missing. Run: scripts/Test-MigrationEnv.ps1 -Load")
     print("Network Reachability (TCP 443):")
     for name, res in diag['network'].items():
         if res['reachable']:
@@ -226,15 +279,29 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Diagnostic utility for migration tool")
     parser.add_argument('--config', default='config.json', help='Config file to validate (json or yaml)')
     parser.add_argument('--json', action='store_true', help='Output JSON only (machine-readable)')
-    parser.add_argument('--print-env', action='store_true', help='Show masked environment variable values')
+    parser.add_argument('--fix-env', action='store_true', help='Append missing canonical env variable placeholders to .env')
     args = parser.parse_args(argv)
-    diag = gather_diagnostics(args.config, include_values=args.print_env or args.json)
+    diag = gather_diagnostics(args.config, fix_env=args.fix_env)
     if args.json:
         print(json.dumps(diag, indent=2))
     else:
-        print_human(diag, print_env=args.print_env)
+        print_human(diag)
+        if args.fix_env and 'fix_env' in diag:
+            added = diag['fix_env'].get('added', [])
+            if added:
+                print(f"Appended placeholders for: {', '.join(added)} → .env")
+            else:
+                if diag['fix_env'].get('error'):
+                    print(f"Failed to append placeholders: {diag['fix_env']['error']}")
+                else:
+                    print("All canonical environment variable placeholders already present.")
     # Exit non-zero if critical failures
-    critical_fail = (not diag['package_import']['importable']) or (not diag['git']['found'])
+    critical_fail = (
+        (not diag['package_import']['importable'])
+        or (not diag['git']['found'])
+        or (not diag['env']['variables']['AZURE_DEVOPS_PAT']['present'])
+        or (not diag['env']['variables']['GITHUB_TOKEN']['present'])
+    )
     return 1 if critical_fail else 0
 
 

@@ -134,6 +134,12 @@ AZURE_DEVOPS_PAT=your_azure_devops_personal_access_token_here
 # Optional: admin:org - only if tool needs to create repositories
 GITHUB_TOKEN=your_github_personal_access_token_here
 
+# Azure DevOps organization slug (no URL). Alias also accepted: AZURE_DEVOPS_ORG
+AZURE_DEVOPS_ORGANIZATION=your_azure_devops_org_here
+
+# GitHub organization or user owner (destination). Alias accepted: GITHUB_ORG
+GITHUB_ORGANIZATION=your_github_org_here
+
 # Optional: Custom API endpoints (usually not needed)
 # AZURE_DEVOPS_BASE_URL=https://dev.azure.com
 # GITHUB_BASE_URL=https://api.github.com

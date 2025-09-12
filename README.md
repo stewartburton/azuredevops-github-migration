@@ -37,16 +37,11 @@ azuredevops-github-migration --help
 
 ### Development Installation
 ```bash
-# Clone and install in development mode (editable)
+# Clone and install in development mode
 git clone https://github.com/stewartburton/azuredevops-github-migration.git
 cd azuredevops-github-migration
 pip install -e .
-
-# (Optional) include dev tooling
-pip install -e .[dev]
 ```
-
-Environment variables in a `.env` file (root directory) are now loaded automatically via `python-dotenv` when the CLI starts.
 
 ## Features
 
@@ -63,6 +58,8 @@ Environment variables in a `.env` file (root directory) are now loaded automatic
 - **Comprehensive Logging**: Detailed logs and migration reports
 - **Rate Limiting**: Built-in rate limiting to respect API limits
 - **Retry Logic**: Automatic retry on transient failures
+- **Interactive Menu (New)**: Launch an arrow-key driven menu with `azuredevops-github-migration interactive` for common tasks
+- **Environment Loader (New)**: Use `azuredevops-github-migration update-env` to invoke the PowerShell helper and load variables from `.env`
 
 ## 📁 Project Structure
 
@@ -120,7 +117,7 @@ azuredevops-github-migration init --template jira-users  # For Jira users (most 
 azuredevops-github-migration init --template full        # Complete migration setup
 ```
 
-### Option 2: Automated Setup from Source (with .env support)
+### Option 2: Automated Setup from Source
 ```bash
 # Clone the repository
 git clone https://github.com/stewartburton/azuredevops-github-migration.git
@@ -128,34 +125,7 @@ cd azuredevops-github-migration
 
 # Run automated setup
 chmod +x scripts/setup.sh
-./scripts/setup.sh        # Uses editable install + auto CLI validation
-
-Windows / PowerShell equivalent:
-```powershell
-pwsh -File .\scripts\setup.ps1        # or add -Dev for dev dependencies
-pwsh -File .\scripts\setup.ps1 -Dev
-```
-
-After the Windows setup completes, two convenience wrappers are created at the repository root:
-
-| File | Purpose |
-|------|---------|
-| `migrate.cmd` | Activates the local `venv` (if present) then runs `azuredevops-github-migration migrate …` |
-| `azuredevops-github-migration.cmd` | Activates the local `venv` then exposes the full CLI (all subcommands) |
-
-You can invoke the full CLI without manually activating the virtual environment by calling:
-```powershell
-./azuredevops-github-migration.cmd --version
-./azuredevops-github-migration.cmd analyze --create-plan --config config/config.json
-```
-
-If you prefer using the native console script name (`azuredevops-github-migration`) directly, activate the environment first:
-```powershell
-./venv/Scripts/Activate.ps1
-azuredevops-github-migration --help
-```
-
-The wrappers fall back to attempting a globally installed CLI if the local `venv` is missing.
+./scripts/setup.sh
 ```
 
 ### Option 3: Manual Development Setup
@@ -177,38 +147,6 @@ cp .env.example .env
 # Edit .env with your tokens: AZURE_DEVOPS_PAT and GITHUB_TOKEN
 ```
 
-### Environment & Authentication (.env Support)
-
-Create a `.env` file (or copy from `.env.example`):
-```bash
-cp .env.example .env
-```
-Fill in:
-```
-AZURE_DEVOPS_PAT=your_azure_devops_pat
-GITHUB_TOKEN=your_github_pat
-```
-Optional variables:
-```
-AZURE_DEVOPS_ORG=your-ado-org
-GITHUB_ORG=your-github-org
-MIGRATION_MAX_CONCURRENT_REPOS=4
-MIGRATION_API_SLEEP_SECONDS=0.2
-LOG_LEVEL=INFO
-```
-The CLI auto-loads `.env` (if present) without extra flags. Explicit environment variables still override.
-
-To inspect what the tool sees (masked):
-```bash
-azuredevops-github-migration doctor --print-env
-```
-
-To verify variables are seen:
-```bash
-env | grep AZURE_DEVOPS_PAT  # *nix
-set | findstr AZURE_DEVOPS_PAT  # Windows Powershell/CMD
-```
-
 ### Basic Migration Commands
 
 ```bash
@@ -220,8 +158,14 @@ azuredevops-github-migration doctor --config config.json
 # or JSON output
 azuredevops-github-migration doctor --json
 
+# (New) Update / load environment variables from .env via PowerShell script
+azuredevops-github-migration update-env
+
+# (New) Launch interactive arrow-key menu (requires optional dependency `questionary`)
+azuredevops-github-migration interactive
+
 # 2. Analyze your organization (optional)
-azuredevops-github-migration analyze --create-plan --config config.json
+azuredevops-github-migration analyze --create-plan  # --config no longer required when using default config.json
 
 # 3. Test migration (safe, no changes)
 azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --dry-run --config config.json
@@ -286,20 +230,149 @@ Notes:
 
 ## Configuration
 
-### Environment Variables & Auto-Loading
+### Environment Variables
 
-The tool now auto-loads a root-level `.env` file using `python-dotenv` on every CLI invocation (without overriding already exported variables). Use `.env.example` as a starting point. Keep tokens **out of version control**: ensure `.env` stays in `.gitignore` (add it if missing).
+Create a `.env` file with your authentication tokens:
 
-You can verify environment detection / masking:
 ```bash
-azuredevops-github-migration doctor --print-env        # human readable
-azuredevops-github-migration doctor --json | jq '.environment'  # JSON structure
+AZURE_DEVOPS_PAT=your_azure_devops_personal_access_token
+GITHUB_TOKEN=your_github_personal_access_token
 ```
 
-Security tips:
-* Rotate tokens after test migrations
-* Use least-privilege PAT scopes (documented in `.env.example`)
-* Consider ephemeral tokens for CI usage
+You may also specify organization names (recommended) so commands and the diagnostic tool can resolve them without prompting:
+
+```
+AZURE_DEVOPS_ORGANIZATION=your-azure-devops-org   # alias: AZURE_DEVOPS_ORG
+GITHUB_ORGANIZATION=your-github-org              # alias: GITHUB_ORG
+```
+
+If both a canonical name and an alias are set the canonical name wins. The tool will attempt to load the `.env` file automatically for every command (without overwriting variables already set in your shell session).
+
+Important – template change (Sept 2025):
+* Earlier versions of this project shipped a minimal `.env` template containing only `AZURE_DEVOPS_PAT` and `GITHUB_TOKEN`.
+* The template now (and all future `init` runs) includes the two organization variables: `AZURE_DEVOPS_ORGANIZATION` and `GITHUB_ORGANIZATION`.
+* If your existing `.env` predates this change you can simply add those two lines manually (recommended) OR run:
+    * `azuredevops-github-migration doctor --fix-env` – this will append placeholder lines for any missing canonical variables without modifying existing secrets.
+* Aliases (`AZURE_DEVOPS_ORG`, `GITHUB_ORG`) still work for backward compatibility, but the canonical names are preferred and are what new docs & diagnostics display.
+
+Security & version control:
+* `.env` is intentionally git‑ignored (see `.gitignore`).
+* To change the default template for new contributors, edit `.env.example` – not someone’s personal `.env`.
+* Never commit real tokens; rotate immediately if you do.
+* CI/CD should inject secrets via environment or secrets manager, not by committing a `.env` file.
+
+### Pre‑Flight Diagnostics & Environment Audit (`doctor`)
+
+Run a fast, side‑effect‑free health check at any time:
+
+```bash
+azuredevops-github-migration doctor            # Human formatted
+azuredevops-github-migration doctor --json     # Machine readable
+```
+
+What it checks:
+* Python interpreter & package importability
+* Git presence & version
+* Config file exists and parses (`--config` to point at a different file; default `config.json`)
+* Network reachability (api.github.com & dev.azure.com TCP 443)
+* Required environment variables & accepted aliases:
+    - AZURE_DEVOPS_PAT
+    - GITHUB_TOKEN
+    - AZURE_DEVOPS_ORGANIZATION (alias: AZURE_DEVOPS_ORG)
+    - GITHUB_ORGANIZATION (alias: GITHUB_ORG)
+
+Secrets are masked (first 4 … last 4) or replaced with `****` for short values. The command auto‑loads a local `.env` (if present) before auditing so you don't need to export variables manually. It never overwrites values already present in the process environment.
+
+Exit codes:
+* 0 = All critical checks passed
+* 1 = One or more critical failures (missing PAT/TOKEN, git missing, or package cannot be imported)
+
+Example JSON excerpt:
+```json
+{
+    "env": {
+        "variables": {
+            "AZURE_DEVOPS_PAT": {"present": true, "masked": "abcd...wxyz"},
+            "GITHUB_TOKEN": {"present": true, "masked": "abcd...wxyz"}
+        },
+        "all_present": true
+    }
+}
+```
+
+### PowerShell Helper (Windows) – `scripts/Test-MigrationEnv.ps1`
+
+The PowerShell helper provides an interactive and scriptable environment audit. It complements (but does not replace) the `doctor` command.
+
+Core capabilities:
+- Reads a `.env` file (defaults to `./.env`) and inspects four required values
+    - `AZURE_DEVOPS_PAT`
+    - `GITHUB_TOKEN`
+    - `AZURE_DEVOPS_ORGANIZATION` (alias: `AZURE_DEVOPS_ORG`)
+    - `GITHUB_ORGANIZATION` (alias: `GITHUB_ORG`)
+- Optional load of values into the current PowerShell session (`-Load`) without overwriting existing values unless `-Overwrite` is also supplied
+- Optional interactive prompting (`-Prompt`) – secure input for tokens, plain input for organization names
+- Automatic prompting if required variables are missing and neither `-Json` nor `-Prompt` was specified (so a plain run helps you fill gaps)
+- JSON machine output (`-Json`) suitable for pipeline gating
+- Masked display (first 4 + last 4 chars; short values become `****`)
+
+Table column meanings:
+| Column | Meaning |
+|--------|---------|
+| `Name` | Canonical variable name |
+| `InFile` | Present in `.env` (or alias present) |
+| `InSession` | Present in current PowerShell process environment |
+| `FileMasked` | Masked value sourced from file (if present) |
+| `SessionMasked` | Masked in‑session value (if present) |
+| `Matches` | Simply indicates the variable is present both in file AND session (does not compare literal equality) |
+
+Usage examples:
+```powershell
+# Basic audit (will auto‑prompt if something is missing)
+./scripts/Test-MigrationEnv.ps1
+
+# Force interactive entry even if everything is already set
+./scripts/Test-MigrationEnv.ps1 -Prompt
+
+# Load from .env (without overwriting existing session values) then prompt for any still missing
+./scripts/Test-MigrationEnv.ps1 -Load -Prompt
+
+# Overwrite existing session values from the .env file
+./scripts/Test-MigrationEnv.ps1 -Load -Overwrite
+
+# JSON output for pipelines (never prompts automatically in JSON mode)
+./scripts/Test-MigrationEnv.ps1 -Json | ConvertFrom-Json
+
+# Fail the build (exit code 2) if anything is missing after attempted load
+./scripts/Test-MigrationEnv.ps1 -Load -FailOnMissing -Json
+
+# Quiet mode suppresses table & summary (but will still auto‑prompt if variables are missing)
+./scripts/Test-MigrationEnv.ps1 -Quiet
+```
+
+Exit codes (current script implementation):
+| Code | Meaning |
+|------|---------|
+| 0 | Ran successfully (even if values are missing and `-FailOnMissing` was NOT supplied) |
+| 2 | `-FailOnMissing` specified AND at least one required variable absent from the session after load / prompt |
+
+Notes:
+- There is intentionally no distinct "fatal vs warning" code split (older documentation referenced 1/2/3 – the script now uses only 0 and 2).
+- Placeholder values (e.g. `your_azure_devops_personal_access_token`) are treated as present; the script does not validate token authenticity.
+- When auto‑prompting, press Enter to keep the existing masked value; entering text replaces it for the current session only (no file write‑back).
+- To persist updated values back to `.env`, edit the file manually (future enhancement may automate this).
+
+`doctor` is the simplest cross-platform pre‑flight; the PowerShell helper is ideal for Windows developer onboarding, local verification, or adding a lightweight gate in Azure DevOps / GitHub Actions Windows runners.
+
+Fixing missing environment placeholders (new):
+```
+# Append any missing canonical env variable placeholders (tokens/org names)
+azuredevops-github-migration doctor --fix-env
+
+# Combine with JSON output (added keys shown under fix_env.added)
+azuredevops-github-migration doctor --fix-env --json
+```
+This does NOT overwrite existing secrets or alias values; it only appends placeholder lines for any of the four standard variables that are absent from the `.env` file. If an alias (e.g. `AZURE_DEVOPS_ORG`) exists but the canonical (`AZURE_DEVOPS_ORGANIZATION`) is missing, a placeholder for the canonical name is still appended so future tooling & docs remain consistent.
 
 ### Migration Config
 
@@ -315,6 +388,26 @@ Edit `config.json` to configure:
 See the [Configuration Reference](docs/technical/configuration.md) for complete options.
 
 ## Scripts Overview
+
+### Interactive CLI & Environment Loader (New)
+
+Two new convenience commands streamline onboarding and day-to-day usage:
+
+| Command | Purpose | Notes |
+|---------|---------|-------|
+| `azuredevops-github-migration interactive` | Launch arrow-key navigable menu for common actions (init, analyze, migrate, batch, doctor, env update) | Requires optional dependency `questionary` (`pip install questionary`) |
+| `azuredevops-github-migration update-env` | Runs underlying PowerShell helper (`scripts/Test-MigrationEnv.ps1 -Load -Overwrite -Json`) to load / audit env vars | Creates a stub `.env` if missing |
+
+Why use them?
+* Faster onboarding for new contributors (no need to memorize flags immediately)
+* Ensures environment variables are loaded into the current process before running analysis or migrations
+* Reduces copy/paste errors for common workflows
+
+Non-Windows / PowerShell note:
+* `update-env` requires PowerShell (pwsh preferred). If neither `pwsh` nor `powershell` is present, the command exits with an instructional message.
+* The interactive menu works cross-platform; only the `update-env` action within it depends on PowerShell.
+
+Security reminder: `update-env` never writes secret values back to the `.env` file—it only loads values that are already present (or that you manually added) and surfaces masked summaries.
 
 ### `migrate` - Main Migration Command
 
@@ -434,38 +527,6 @@ Contains helper functions for:
 - **[examples/sample-migration-plan.json](examples/sample-migration-plan.json)** - Batch migration template
 
 ## ✅ Post-Migration Verification
-
-## 🧹 Developer Tooling & Quality Gates
-
-### Pre-commit Hooks
-Install and enable optional quality checks (formatting, lint, type, security):
-```bash
-pip install pre-commit
-pre-commit install
-pre-commit run --all-files   # run on entire repo
-```
-Configured hooks:
-- black
-- isort
-- flake8
-- mypy
-- bandit
-- pyupgrade
-
-### Doctor Environment Inspection
-The `doctor` command now supports masked environment inspection:
-```bash
-azuredevops-github-migration doctor --print-env
-```
-JSON example:
-```bash
-azuredevops-github-migration doctor --json | jq '.environment.AZURE_DEVOPS_PAT'
-```
-Output fields:
-- present: boolean
-- value_masked: first 4 characters + ellipsis + masked remainder (only when --print-env or --json)
-
-Secrets are never fully displayed. If completely missing, set them in `.env` or export before running migrations.
 
 After each repository migration, validate success before announcing cutover. A detailed checklist lives in `docs/user-guide/POST_MIGRATION_CHECKLIST.md`.
 

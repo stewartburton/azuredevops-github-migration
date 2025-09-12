@@ -9,10 +9,10 @@ description = "A comprehensive production-ready tool for migrating repositories,
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Stewart Burton", email = "stewart@stewart-burton.com"}
+    {name = "Stewart Burton", email = "stewart@example.com"}
 ]
 maintainers = [
-    {name = "Stewart Burton", email = "stewart@stewart-burton.com"}
+    {name = "Stewart Burton", email = "stewart@example.com"}
 ]
 keywords = [
     "azure-devops",
@@ -50,7 +50,7 @@ dependencies = [
     "markdown>=3.4.0",
     "tqdm>=4.65.0",
     "urllib3>=2.0.7",
-    "python-dotenv>=1.0.0"
+    "questionary>=2.0.1"
 ]
 
 [project.optional-dependencies]
