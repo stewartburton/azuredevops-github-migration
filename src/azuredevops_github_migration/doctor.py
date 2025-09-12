@@ -106,7 +106,15 @@ def check_config_file(config_path: str) -> Dict[str, Any]:
                 if config_path.endswith(".json"):
                     json.load(f)
                 else:
-                    import yaml  # type: ignore
+                    try:
+                        import yaml  # type: ignore
+                    except ImportError:
+                        data["parse_ok"] = False
+                        data["error"] = (
+                            "PyYAML is required to parse YAML config files. "
+                            "Please install it with 'pip install pyyaml'."
+                        )
+                        return data
                     yaml.safe_load(f)
             data["parse_ok"] = True
         except Exception as e:
