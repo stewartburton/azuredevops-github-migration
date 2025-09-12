@@ -1097,8 +1097,8 @@ class MigrationOrchestrator:
             except Exception:
                 allow_local = False
             cwd = os.getcwd()
-            # Heuristic: if this looks like the tool source repo (contains pyproject.toml & src/azuredevops_github_migration) and override not set
-            is_tool_repo = os.path.exists(os.path.join(cwd, 'pyproject.toml')) and os.path.isdir(os.path.join(cwd, 'src', 'azuredevops_github_migration'))
+            # Robust detection: check for marker file '.TOOL_REPO' in the repo root instead of hardcoded paths
+            is_tool_repo = os.path.exists(os.path.join(cwd, '.TOOL_REPO'))
             if is_tool_repo and not allow_local:
                 self.logger.info("[GUARDRAIL] Skipping local workflow file emission (use --allow-local-workflows to override). Workflows will only be pushed to target repository.")
             # Generate workflows in an isolated temp directory to avoid polluting the tool's repository
