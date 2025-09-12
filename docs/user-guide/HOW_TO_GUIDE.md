@@ -148,9 +148,17 @@ Edit `.env` file with your credentials:
 ```bash
 AZURE_DEVOPS_PAT=your_azure_devops_personal_access_token
 GITHUB_TOKEN=your_github_personal_access_token
+AZURE_DEVOPS_ORGANIZATION=your_azure_devops_org   # (New standard template entry)
+GITHUB_ORGANIZATION=your_github_org               # (New standard template entry)
 ```
 
 **Important**: Never commit these files with real tokens!
+
+Template evolution (September 2025): Earlier versions only included the two token variables. The initialization template now also includes `AZURE_DEVOPS_ORGANIZATION` and `GITHUB_ORGANIZATION` so diagnostics and commands can operate without repeatedly specifying org flags. If your existing `.env` predates this change you can:
+1. Manually add the two lines above, OR
+2. Run `azuredevops-github-migration doctor --fix-env` to append any missing canonical placeholders (it never overwrites existing values).
+
+Alias compatibility: `AZURE_DEVOPS_ORG` and `GITHUB_ORG` remain accepted, but new docs & outputs prefer the canonical names. The `--fix-env` option will still append canonical placeholders even if only an alias is currently present – this is intentional to encourage consistency.
 
 #### (New) Loading Environment Variables Automatically
 
@@ -174,6 +182,16 @@ azuredevops-github-migration doctor
 ```
 
 The `doctor` command auto-loads `.env` (without overwriting existing shell values) to report token presence.
+
+Automatic placeholder repair:
+```bash
+# Append any missing canonical env placeholders (tokens/org names)
+azuredevops-github-migration doctor --fix-env
+
+# Produce JSON including fix summary
+azuredevops-github-migration doctor --fix-env --json
+```
+`--fix-env` only appends missing canonical lines; it never removes or edits existing entries, nor does it write back actual secret values you typed in a session.
 
 ## Authentication Setup
 

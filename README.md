@@ -248,6 +248,13 @@ GITHUB_ORGANIZATION=your-github-org              # alias: GITHUB_ORG
 
 If both a canonical name and an alias are set the canonical name wins. The tool will attempt to load the `.env` file automatically for every command (without overwriting variables already set in your shell session).
 
+Important – template change (Sept 2025):
+* Earlier versions of this project shipped a minimal `.env` template containing only `AZURE_DEVOPS_PAT` and `GITHUB_TOKEN`.
+* The template now (and all future `init` runs) includes the two organization variables: `AZURE_DEVOPS_ORGANIZATION` and `GITHUB_ORGANIZATION`.
+* If your existing `.env` predates this change you can simply add those two lines manually (recommended) OR run:
+    * `azuredevops-github-migration doctor --fix-env` – this will append placeholder lines for any missing canonical variables without modifying existing secrets.
+* Aliases (`AZURE_DEVOPS_ORG`, `GITHUB_ORG`) still work for backward compatibility, but the canonical names are preferred and are what new docs & diagnostics display.
+
 Security & version control:
 * `.env` is intentionally git‑ignored (see `.gitignore`).
 * To change the default template for new contributors, edit `.env.example` – not someone’s personal `.env`.
@@ -356,6 +363,16 @@ Notes:
 - To persist updated values back to `.env`, edit the file manually (future enhancement may automate this).
 
 `doctor` is the simplest cross-platform pre‑flight; the PowerShell helper is ideal for Windows developer onboarding, local verification, or adding a lightweight gate in Azure DevOps / GitHub Actions Windows runners.
+
+Fixing missing environment placeholders (new):
+```
+# Append any missing canonical env variable placeholders (tokens/org names)
+azuredevops-github-migration doctor --fix-env
+
+# Combine with JSON output (added keys shown under fix_env.added)
+azuredevops-github-migration doctor --fix-env --json
+```
+This does NOT overwrite existing secrets or alias values; it only appends placeholder lines for any of the four standard variables that are absent from the `.env` file. If an alias (e.g. `AZURE_DEVOPS_ORG`) exists but the canonical (`AZURE_DEVOPS_ORGANIZATION`) is missing, a placeholder for the canonical name is still appended so future tooling & docs remain consistent.
 
 ### Migration Config
 
