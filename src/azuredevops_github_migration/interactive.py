@@ -105,21 +105,43 @@ def interactive_menu():
     if not questionary:
         print("Optional dependency 'questionary' not installed. Install with: pip install questionary")
         return 1
+    # Logical ordering: prepare & validate first, then analysis, planning, migration, support
+    # 1. Update env, 2. Doctor, 3. Init, 4. Analyze, 5. Batch, 6. Migrate, 7. Quit
+    color_disabled = bool(os.environ.get('NO_COLOR'))
+    no_icons = bool(os.environ.get('MIGRATION_CLI_NO_ICONS'))
+
+    def style(txt: str, color: str) -> str:
+        if color_disabled:
+            return txt
+        return f"[{color}]{txt}[/{color}]"  # questionary uses prompt_toolkit style tags
+
+    ico = (lambda sym: sym if (not no_icons) else '')
+
+    # Using explicit Choice objects allows future metadata
     choices = [
-        "Init configuration files",
-        "Migrate repository",
-        "Analyze organization",
-        "Batch migrate",
-        "Doctor diagnostics",
-        "Update / load .env",
-        "Quit"
+        questionary.Choice(title=f"{ico('🔐 ')}" + style("Update / load .env", "cyan"), value='update'),
+        questionary.Choice(title=f"{ico('🩺 ')}" + style("Doctor diagnostics", "magenta"), value='doctor'),
+        questionary.Choice(title=f"{ico('🛠  ')}" + style("Init configuration files", "yellow"), value='init'),
+        questionary.Choice(title=f"{ico('🔎 ')}" + style("Analyze organization", "blue"), value='analyze'),
+        questionary.Choice(title=f"{ico('📦 ')}" + style("Batch migrate", "green"), value='batch'),
+        questionary.Choice(title=f"{ico('🚚 ')}" + style("Migrate repository", "white"), value='migrate'),
+        questionary.Choice(title=f"{ico('❌ ')}" + style("Quit", "red"), value='quit'),
     ]
+
+    help_footer = (
+        "Use arrow keys • Enter to run • ESC/Ctrl+C to abort | Set NO_COLOR=1 to disable colors, "
+        "MIGRATION_CLI_NO_ICONS=1 to hide emojis"
+    )
+
     while True:
-        selection = questionary.select("Choose an action:", choices=choices).ask()
+        selection = questionary.select(
+            "Choose an action:", choices=choices, instruction="",
+            qmark="➡" if not no_icons else "?",
+        ).ask()
         if selection is None:  # user aborted (Ctrl+C)
             print("Aborted.")
             return 1
-        key = selection.lower().split()[0]
+        key = selection  # value already mapped
         if key == 'init':
             subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'init'])
         elif key == 'migrate':
