@@ -1,0 +1,9 @@
+{
+    "migrations": [
+        {
+            "azure_devops": { "project": "YourProjectName", "repository": "your-repo-name" },
+            "github": { "repository": "migrated-repo-name", "organization": "your-github-org" },
+            "options": { "migrate_work_items": true, "migrate_branches": true, "create_private": true }
+        }
+    ]
+}

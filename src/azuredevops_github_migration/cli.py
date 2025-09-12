@@ -6,6 +6,24 @@ Command Line Interface for Azure DevOps to GitHub Migration Tool
 import sys
 import argparse
 from typing import List, Optional
+from pathlib import Path
+
+# Load environment variables from .env if present (best-effort)
+def _load_env_file():
+    try:
+        from dotenv import load_dotenv  # type: ignore
+    except ImportError:
+        return
+    # Search project root (current working dir) and parent directories until repo root heuristics
+    cwd = Path.cwd()
+    candidates = [cwd, cwd.parent]
+    for base in candidates:
+        env_path = base / ".env"
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
+            break
+
+_load_env_file()
 
 def print_help():
     """Print help information for the CLI tool."""

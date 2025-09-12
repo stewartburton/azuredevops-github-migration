@@ -13,6 +13,7 @@ import shutil
 import socket
 import platform
 import argparse
+from typing import Dict, Any, List
 
 # --- Internal helpers for optional .env loading (mirrors migrate/analyze behavior) ---
 def _load_env_file(filename: str = '.env') -> None:
@@ -38,7 +39,26 @@ def _load_env_file(filename: str = '.env') -> None:
                     os.environ[key] = value
     except Exception as e:  # pragma: no cover - non critical path
         print(f"[WARN] Unable to load .env file: {e}")
-from typing import Dict, Any
+SENSITIVE_ENV_KEYS = [
+    "AZURE_DEVOPS_PAT",
+    "GITHUB_TOKEN",
+]
+
+OPTIONAL_ENV_KEYS = [
+    "AZURE_DEVOPS_ORG",
+    "GITHUB_ORG",
+    "MIGRATION_MAX_CONCURRENT_REPOS",
+    "MIGRATION_API_SLEEP_SECONDS",
+    "LOG_LEVEL",
+]
+
+
+def _mask_value(val: str, show: int = 4) -> str:
+    if not val:
+        return ""
+    if len(val) <= show:
+        return "*" * len(val)
+    return val[:show] + "…" + "*" * (len(val) - show)
 
 try:  # Local imports guarded so doctor works even if partial install
     from . import __version__
@@ -123,9 +143,18 @@ def check_config_file(config_path: str) -> Dict[str, Any]:
     return data
 
 
-def gather_diagnostics(config: str) -> Dict[str, Any]:
+def gather_diagnostics(config: str, include_values: bool = False) -> Dict[str, Any]:
     # Attempt to load .env early so presence test reflects file contents
     _load_env_file()
+    env_summary: Dict[str, Any] = {}
+    for key in SENSITIVE_ENV_KEYS + OPTIONAL_ENV_KEYS:
+        raw = os.getenv(key)
+        env_summary[key] = {
+            "present": raw is not None,
+        }
+        if include_values and raw is not None:
+            env_summary[key]["value_masked"] = _mask_value(raw)
+
     diag: Dict[str, Any] = {
         "tool_version": __version__,
         "platform": platform.platform(),
@@ -137,16 +166,13 @@ def gather_diagnostics(config: str) -> Dict[str, Any]:
             "github_api": check_network_host("api.github.com"),
             "azure_devops": check_network_host("dev.azure.com"),
         },
-        "env_tokens_present": {
-            "AZURE_DEVOPS_PAT": bool(os.getenv("AZURE_DEVOPS_PAT")),
-            "GITHUB_TOKEN": bool(os.getenv("GITHUB_TOKEN")),
-        },
+        "environment": env_summary,
     }
     return diag
 
 
-def print_human(diag: Dict[str, Any]):
-    print("Azure DevOps → GitHub Migration Tool Diagnostics")
+def print_human(diag: Dict[str, Any], print_env: bool = False):
+    print("Azure DevOps to GitHub Migration Tool Diagnostics")
     print("=" * 60)
     print(f"Version: {diag['tool_version']}")
     print(f"Platform: {diag['platform']}")
@@ -174,9 +200,13 @@ def print_human(diag: Dict[str, Any]):
             print(f"  Error: {diag['config']['error']}")
     else:
         print(f"  Missing: {diag['config']['path']}")
-    print("Environment Tokens:")
-    for k, v in diag['env_tokens_present'].items():
-        print(f"  {k}: {'SET' if v else 'MISSING'}")
+    print("Environment Variables:")
+    for name, meta in diag['environment'].items():
+        status = 'SET' if meta['present'] else 'MISSING'
+        if print_env and meta.get('value_masked'):
+            print(f"  {name}: {status} ({meta['value_masked']})")
+        else:
+            print(f"  {name}: {status}")
     print("Network Reachability (TCP 443):")
     for name, res in diag['network'].items():
         if res['reachable']:
@@ -196,12 +226,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Diagnostic utility for migration tool")
     parser.add_argument('--config', default='config.json', help='Config file to validate (json or yaml)')
     parser.add_argument('--json', action='store_true', help='Output JSON only (machine-readable)')
+    parser.add_argument('--print-env', action='store_true', help='Show masked environment variable values')
     args = parser.parse_args(argv)
-    diag = gather_diagnostics(args.config)
+    diag = gather_diagnostics(args.config, include_values=args.print_env or args.json)
     if args.json:
         print(json.dumps(diag, indent=2))
     else:
-        print_human(diag)
+        print_human(diag, print_env=args.print_env)
     # Exit non-zero if critical failures
     critical_fail = (not diag['package_import']['importable']) or (not diag['git']['found'])
     return 1 if critical_fail else 0
