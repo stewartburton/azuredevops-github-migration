@@ -33,6 +33,7 @@ def test_project_selection(monkeypatch, capsys):
     # Provide questionary mock that returns second project
     class DummyQ:
         def select(self, *a, **k):
+            # Simulate single page; just return second project
             class X:
                 def ask(self_inner):
                     return 'Beta Project'

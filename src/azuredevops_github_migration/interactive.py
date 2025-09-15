@@ -249,7 +249,18 @@ def interactive_menu():
         elif key == 'migrate':
             subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'migrate'])
         elif key == 'analyze':
-            subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'analyze'])
+            # Auto-detect if work items should be skipped (jira template / migrate_work_items=false)
+            skip_flag = []
+            try:
+                if os.path.exists('config.json'):
+                    import json as _json
+                    with open('config.json','r',encoding='utf-8') as _cf:
+                        _cfg = _json.load(_cf)
+                    if not _cfg.get('migration', {}).get('migrate_work_items', True):
+                        skip_flag = ['--skip-work-items']
+            except Exception:
+                pass
+            subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'analyze', *skip_flag])
         elif key == 'batch':
             subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'batch'])
         elif key == 'doctor_menu':

@@ -140,6 +140,7 @@ def main(argv=None):
 
     selected_project: Optional[str] = None
     project_names: list[str] = []
+    force_launch_menu = False  # set when user chooses Skip during project selection
 
     # 4. analyze list projects (with optional interactive selection)
     if not args.no_analyze:
@@ -150,26 +151,58 @@ def main(argv=None):
             try:
                 analyzer = AzureDevOpsAnalyzer('config.json', skip_work_items=True, omit_work_item_fields=True)
                 projects = analyzer.client.get_projects()
-                project_names = [p['name'] for p in projects]
+                project_names = sorted([p['name'] for p in projects], key=lambda s: s.lower())
                 print(f"Found {len(project_names)} projects:")
-                # Print truncated list (first 30) if too many, user can select interactively
+                # Print alphabetical preview (first 30)
                 preview_limit = 30
                 for name in project_names[:preview_limit]:
                     print(f"• {name}")
                 if len(project_names) > preview_limit:
                     print(f"… ({len(project_names) - preview_limit} more omitted in preview) …")
-                # Interactive selection if possible
+
+                # Interactive selection with pagination
                 can_select = (not args.non_interactive) and (not args.no_project_select) and questionary is not None and project_names
-                if can_select:
+                if can_select and project_names:
                     if len(project_names) == 1:
                         selected_project = project_names[0]
                     else:
                         try:
-                            selected_project = questionary.select(
-                                "Select a project for next-step command examples (Enter to choose):",
-                                choices=project_names,
-                                qmark="📁"
-                            ).ask()
+                            page_size = 10
+                            page = 0
+                            total = len(project_names)
+                            while True:
+                                start = page * page_size
+                                end = min(start + page_size, total)
+                                slice_choices = project_names[start:end]
+                                nav_choices: list[str] = []
+                                if page > 0:
+                                    nav_choices.append('◀ Prev page')
+                                if end < total:
+                                    nav_choices.append('Next page ▶')
+                                nav_choices.append('Skip (open interactive menu)')
+                                nav_choices.append('Cancel selection')
+                                # Compose choices (projects first, then nav)
+                                q_choices = slice_choices + nav_choices
+                                prompt = f"Select a project (page {page+1}/{(total + page_size -1)//page_size})" if total > page_size else "Select a project"
+                                ans = questionary.select(prompt + ':', choices=q_choices, qmark="📁").ask()
+                                if ans is None or ans == 'Cancel selection':
+                                    break
+                                if ans == '◀ Prev page':
+                                    page -= 1
+                                    if page < 0:
+                                        page = 0
+                                    continue
+                                if ans == 'Next page ▶':
+                                    if end < total:
+                                        page += 1
+                                    continue
+                                if ans == 'Skip (open interactive menu)':
+                                    force_launch_menu = True
+                                    selected_project = None
+                                    break
+                                # Otherwise it's a project name
+                                selected_project = ans
+                                break
                         except Exception as qe:  # pragma: no cover
                             _print(f"Project selection skipped (UI error: {qe})")
                 else:
@@ -188,6 +221,16 @@ def main(argv=None):
         proj_token_disp = f'"{proj_token}"'
     else:
         proj_token_disp = proj_token
+    # If user chose Skip → open interactive menu immediately (bypass recommendations)
+    if force_launch_menu:
+        try:
+            from .interactive import interactive_menu
+            _print("Opening interactive menu (Skip chosen)...")
+            interactive_menu()
+        except Exception as e:  # pragma: no cover
+            _print(f"Could not open interactive menu: {e}")
+        return 0
+
     _print("Quickstart complete. Recommended next commands:")
     if selected_project:
         _print(f"  1) Analyze selected project: azuredevops-github-migration analyze --project {proj_token_disp} --create-plan")
