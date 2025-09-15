@@ -476,7 +476,20 @@ def main(argv=None):
     parser.add_argument('--assist', action='store_true', help='Open interactive remediation submenu after diagnostics')
     parser.add_argument('--print-env', action='store_true', help='Print only masked environment variable status and exit')
     parser.add_argument('--edit-env', action='store_true', help='Interactively edit and persist core .env variables (with backup)')
+    parser.add_argument('--doctor-mode', choices=[
+        'plain','fix','assist','fix-assist','edit','edit-assist'
+    ], help='Shortcut composite for doctor modes (non-interactive): maps to combinations of --fix-env/--assist/--edit-env')
     args = parser.parse_args(argv)
+    # Apply composite doctor-mode if provided (unless user also manually set conflicting flags)
+    if args.doctor_mode:
+        mode = args.doctor_mode
+        # Only set flags if user did not already specify them explicitly to avoid surprise overrides
+        if mode in ('fix','fix-assist') and not args.fix_env:
+            args.fix_env = True
+        if mode in ('assist','fix-assist','edit-assist') and not args.assist:
+            args.assist = True
+        if mode in ('edit','edit-assist') and not args.edit_env:
+            args.edit_env = True
     if args.json and args.edit_env:
         print('--edit-env cannot be combined with --json output mode (interactive editing).', flush=True)
         return 2

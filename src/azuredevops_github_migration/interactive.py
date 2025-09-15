@@ -129,8 +129,8 @@ def interactive_menu():
     # Using explicit Choice objects allows future metadata
     choices = [
         questionary.Choice(title=f"{ico('🔐 ')}Update / load .env", value='update'),
-        questionary.Choice(title=f"{ico('🩺 ')}Doctor diagnostics", value='doctor'),
-    questionary.Choice(title=f"{ico('🩺 ')}Doctor submenu (assist)", value='doctor_assist'),
+        # Single doctor entry opens a submenu of diagnostic modes
+        questionary.Choice(title=f"{ico('🩺 ')}Doctor diagnostics", value='doctor_menu'),
         questionary.Choice(title=f"{ico('🛠  ')}Init configuration files", value='init'),
         questionary.Choice(title=f"{ico('🔎 ')}Analyze organization", value='analyze'),
         questionary.Choice(title=f"{ico('📦 ')}Batch migrate", value='batch'),
@@ -163,12 +163,10 @@ def interactive_menu():
             subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'analyze'])
         elif key == 'batch':
             subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'batch'])
-        elif key == 'doctor':
-            subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor'])
-        elif key == 'doctor_assist':
-            # Offer quick pick: plain, --fix-env, --assist, or both
+        elif key == 'doctor_menu':
+            # Submenu for doctor operations (replaces previous separate entries)
             sub = questionary.select(
-                "Doctor mode:",
+                "Doctor diagnostics:",
                 choices=[
                     questionary.Choice(title="Run diagnostics", value='plain'),
                     questionary.Choice(title="Diagnostics + append placeholders (--fix-env)", value='fix'),
@@ -192,7 +190,7 @@ def interactive_menu():
                 subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--edit-env'])
             elif sub == 'edit_env_assist':
                 subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--edit-env', '--assist'])
-            else:
+            else:  # back or None
                 continue
         elif key == 'update':
             run_update_env()
