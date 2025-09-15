@@ -16,6 +16,7 @@ Production‑ready CLI to migrate Azure DevOps repositories (and optionally work
 | Analysis | Inventory & migration planning report |
 | Diagnostics | `doctor`, placeholder auto‑append, interactive remediation & editor |
 | Interactive UX | Arrow‑key menu (`interactive`) with streamlined diagnostics & env actions |
+| Project Selection UX | Paginated (10 / page) quickstart project picker with Search / filter (substring + fuzzy), Jump to letter, Skip → open menu |
 | Safety | Dry runs, rate limiting, retry logic, masked tokens |
 | Reporting | JSON migration reports + verification script integration |
 | Extensibility | Clean Python package layout, tests, semantic versioning |
@@ -74,6 +75,41 @@ Suppress selection explicitly:
 ```bash
 azuredevops-github-migration quickstart --no-project-select
 ```
+
+### Project List Navigation (Pagination, Search, Jump, Skip)
+
+When you have many Azure DevOps projects (e.g. 100+), the quickstart wizard provides an enhanced selector:
+
+| Feature | How to Use | Notes |
+|---------|------------|-------|
+| Pagination | Use Next page ▶ / ◀ Prev page entries | Fixed page size of 10 projects per page (current release) |
+| Search / filter | Choose "Search / filter" then type a query | Matches if query is a substring OR all characters appear in order (fuzzy subsequence). Case‑insensitive. |
+| Clear filter | Appears after a filter is active | Restores full project list, returns to first page |
+| Jump to letter | Choose "Jump to letter" and enter a single character | Jumps to page containing first project starting with that letter (within current filtered list) |
+| Skip (open interactive menu) | Select "Skip (open interactive menu)" | Immediately launches full interactive menu, bypassing post‑wizard recommendations |
+| Cancel selection | Press Esc or pick "Cancel selection" | No project selected; recommendations show generic `<Project>` placeholder |
+
+Fuzzy example:
+```
+Query: gt
+Matches: GammaTool (because 'g' ... 't' appear in order)
+```
+
+Performance note: The quickstart always retrieves the list of projects with work items suppressed (`skip_work_items` internally) so Jira users (or anyone not migrating issues) are not forced to grant the Work Items scope just to enumerate projects.
+
+### Automatic Work Item Skipping in Jira Mode
+
+If you initialized with the `jira-users` template (which sets `"migration": {"migrate_work_items": false}`) the interactive Analyze path will automatically inject `--skip-work-items`. This:
+* Avoids unnecessary API calls & permission requirements
+* Produces leaner migration plans focused on repositories & pipelines
+* Keeps recommendations consistent with Jira‑centric workflows
+
+You can still force work item analysis later by editing `config.json` to set `migrate_work_items` to `true` and re‑running analyze without the skip flag.
+
+### Keyboard / Input Tips
+* You can press Enter on any navigation entry (Next / Prev / Search / Jump / Skip).
+* Pressing Esc (or choosing Cancel selection) exits selection gracefully.
+* The selector only appears when `questionary` is installed and you are not using `--non-interactive` or `--no-project-select`.
 
 ### Launching the Interactive Menu Automatically
 
