@@ -168,39 +168,129 @@ def main(argv=None):
                     else:
                         try:
                             # page_size defined above; reuse
+                            full_list = project_names
+                            filtered = full_list
+                            filter_text = ''
                             page = 0
-                            total = len(project_names)
+                            def _apply_filter(txt: str):
+                                lower = txt.lower()
+                                # simple fuzzy: all chars must appear in order OR substring match
+                                def fuzzy(name: str) -> bool:
+                                    nlow = name.lower()
+                                    if lower in nlow:
+                                        return True
+                                    idx = 0
+                                    for ch in lower:
+                                        idx = nlow.find(ch, idx)
+                                        if idx == -1:
+                                            return False
+                                        idx += 1
+                                    return True
+                                return [p for p in full_list if fuzzy(p)]
                             while True:
+                                total = len(filtered)
+                                if total == 0:
+                                    # Navigation/icon helpers
+                                    use_icons = os.getenv('MIGRATION_NO_NAV_ICONS','').lower() not in ('1','true','yes')
+                                    def _nav(value: str, icon: str):
+                                        if not use_icons:
+                                            return value
+                                        try:
+                                            from questionary import Choice  # type: ignore
+                                            return Choice(title=f"{icon} {value}", value=value)
+                                        except Exception:  # pragma: no cover
+                                            return value
+                                    q_choices = [
+                                        '(No matches)',
+                                        _nav('Clear filter','🧹'),
+                                        _nav('New search','🔍'),
+                                        _nav('Skip (open interactive menu)','⏭️'),
+                                        _nav('Cancel selection','🚫')
+                                    ]
+                                    ans = questionary.select(f"No results for '{filter_text}'.", choices=q_choices, qmark='📁').ask()
+                                    if ans == 'Clear filter':
+                                        filter_text = ''
+                                        filtered = full_list
+                                        page = 0
+                                        continue
+                                    if ans == 'New search':
+                                        s = questionary.text('Search projects (substring or fuzzy):').ask()
+                                        if s:
+                                            filter_text = s
+                                            filtered = _apply_filter(s)
+                                            page = 0
+                                        continue
+                                    if ans == 'Skip (open interactive menu)':
+                                        force_launch_menu = True
+                                        break
+                                    break
+                                max_pages = (total + page_size - 1)//page_size
+                                if page >= max_pages:
+                                    page = max_pages - 1 if max_pages>0 else 0
                                 start = page * page_size
                                 end = min(start + page_size, total)
-                                slice_choices = project_names[start:end]
-                                nav_choices: list[str] = []
+                                slice_choices = filtered[start:end]
+                                use_icons = os.getenv('MIGRATION_NO_NAV_ICONS','').lower() not in ('1','true','yes')
+                                def _nav(value: str, icon: str):
+                                    if not use_icons:
+                                        return value
+                                    try:
+                                        from questionary import Choice  # type: ignore
+                                        return Choice(title=f"{icon} {value}", value=value)
+                                    except Exception:  # pragma: no cover
+                                        return value
+                                nav_choices = []  # type: ignore[var-annotated]
                                 if page > 0:
-                                    nav_choices.append('◀ Prev page')
+                                    nav_choices.append(_nav('◀ Prev page','⬅️'))
                                 if end < total:
-                                    nav_choices.append('Next page ▶')
-                                nav_choices.append('Skip (open interactive menu)')
-                                nav_choices.append('Cancel selection')
-                                # Compose choices (projects first, then nav)
+                                    nav_choices.append(_nav('Next page ▶','➡️'))
+                                nav_choices.append(_nav('Search / filter','🔍'))
+                                if filter_text:
+                                    nav_choices.append(_nav('Clear filter','🧹'))
+                                nav_choices.append(_nav('Jump to letter','🔤'))
+                                nav_choices.append(_nav('Skip (open interactive menu)','⏭️'))
+                                nav_choices.append(_nav('Cancel selection','🚫'))
                                 q_choices = slice_choices + nav_choices
-                                prompt = f"Select a project (page {page+1}/{(total + page_size -1)//page_size})" if total > page_size else "Select a project"
-                                ans = questionary.select(prompt + ':', choices=q_choices, qmark="📁").ask()
+                                prompt = f"Select a project (page {page+1}/{max_pages})"
+                                if filter_text:
+                                    prompt += f" [filter='{filter_text}']"
+                                ans = questionary.select(prompt + ':', choices=q_choices, qmark='📁').ask()
                                 if ans is None or ans == 'Cancel selection':
                                     break
                                 if ans == '◀ Prev page':
-                                    page -= 1
-                                    if page < 0:
-                                        page = 0
+                                    page = max(page-1,0)
                                     continue
                                 if ans == 'Next page ▶':
                                     if end < total:
                                         page += 1
                                     continue
+                                if ans == 'Search / filter':
+                                    s = questionary.text('Search projects (substring or fuzzy):').ask()
+                                    if s:
+                                        filter_text = s
+                                        filtered = _apply_filter(s)
+                                        page = 0
+                                    continue
+                                if ans == 'Clear filter':
+                                    filter_text = ''
+                                    filtered = full_list
+                                    page = 0
+                                    continue
+                                if ans == 'Jump to letter':
+                                    letter = questionary.text('Enter starting letter:').ask()
+                                    if letter:
+                                        l = letter[0].lower()
+                                        # find first index in full_list (not filtered) to preserve global navigation
+                                        target_list = filtered
+                                        idx = next((i for i,n in enumerate(target_list) if n.lower().startswith(l)), None)
+                                        if idx is not None:
+                                            page = idx // page_size
+                                    continue
                                 if ans == 'Skip (open interactive menu)':
                                     force_launch_menu = True
                                     selected_project = None
                                     break
-                                # Otherwise it's a project name
+                                # Otherwise project
                                 selected_project = ans
                                 break
                         except Exception as qe:  # pragma: no cover
