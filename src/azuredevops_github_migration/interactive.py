@@ -129,6 +129,9 @@ def interactive_menu():
     # Using explicit Choice objects allows future metadata
     choices = [
         questionary.Choice(title=f"{ico('🔐 ')}Update / load .env", value='update'),
+      
+        # Single doctor entry opens a submenu of diagnostic modes
+        questionary.Choice(title=f"{ico('🩺 ')}Doctor diagnostics", value='doctor_menu'),
         questionary.Choice(title=f"{ico('🩺 ')}Doctor diagnostics", value='doctor'),
     questionary.Choice(title=f"{ico('🩺 ')}Doctor submenu (assist)", value='doctor_assist'),
         questionary.Choice(title=f"{ico('🛠  ')}Init configuration files", value='init'),
@@ -163,6 +166,10 @@ def interactive_menu():
             subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'analyze'])
         elif key == 'batch':
             subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'batch'])
+        elif key == 'doctor_menu':
+            # Submenu for doctor operations (replaces previous separate entries)
+            sub = questionary.select(
+                "Doctor diagnostics:",
         elif key == 'doctor':
             subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor'])
         elif key == 'doctor_assist':
@@ -192,7 +199,7 @@ def interactive_menu():
                 subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--edit-env'])
             elif sub == 'edit_env_assist':
                 subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--edit-env', '--assist'])
-            else:
+            else:  # back or None
                 continue
         elif key == 'update':
             run_update_env()
