@@ -152,13 +152,13 @@ def main(argv=None):
                 analyzer = AzureDevOpsAnalyzer('config.json', skip_work_items=True, omit_work_item_fields=True)
                 projects = analyzer.client.get_projects()
                 project_names = sorted([p['name'] for p in projects], key=lambda s: s.lower())
-                print(f"Found {len(project_names)} projects:")
-                # Print alphabetical preview (first 30)
-                preview_limit = 30
-                for name in project_names[:preview_limit]:
-                    print(f"• {name}")
-                if len(project_names) > preview_limit:
-                    print(f"… ({len(project_names) - preview_limit} more omitted in preview) …")
+                total_projects = len(project_names)
+                print(f"Found {total_projects} projects.")
+                # Only print inline list if total <= page size threshold; otherwise rely on paginator
+                page_size = 10
+                if total_projects and total_projects <= page_size:
+                    for name in project_names:
+                        print(f"• {name}")
 
                 # Interactive selection with pagination
                 can_select = (not args.non_interactive) and (not args.no_project_select) and questionary is not None and project_names
@@ -167,7 +167,7 @@ def main(argv=None):
                         selected_project = project_names[0]
                     else:
                         try:
-                            page_size = 10
+                            # page_size defined above; reuse
                             page = 0
                             total = len(project_names)
                             while True:
