@@ -35,8 +35,11 @@ def _load_env_file(filename: str = '.env') -> None:
                 key, value = line.split('=', 1)
                 key = key.strip()
                 value = value.strip().strip("'").strip('"')
-                # Do not overwrite if already set in environment
-                if key and key not in os.environ:
+                if not key:
+                    continue
+                # Overwrite if not present OR existing value looks like a placeholder (starts with 'your_')
+                existing = os.environ.get(key)
+                if existing is None or existing.lower().startswith('your_'):
                     os.environ[key] = value
     except Exception as e:  # pragma: no cover - non critical path
         print(f"[WARN] Unable to load .env file: {e}")
@@ -142,9 +145,11 @@ def _gather_env_audit() -> Dict[str, Any]:
     def mask(val: str | None) -> str:
         if not val:
             return ""
-        if len(val) <= 8:
-            return "****"
-        return f"{val[:4]}...{val[-4:]}"
+        # Tests expect: startswith original first 4 chars, and remainder obfuscated (no raw tail)
+        if len(val) <= 4:
+            return val[0] + "***" if len(val) > 1 else "****"
+        # Keep first 4, replace remainder with fixed asterisks; do not reveal tail length
+        return val[:4] + "****"
 
     aliases = {
         "AZURE_DEVOPS_ORGANIZATION": ["AZURE_DEVOPS_ORGANIZATION", "AZURE_DEVOPS_ORG"],
@@ -240,6 +245,15 @@ def gather_diagnostics(config: str, fix_env: bool = False) -> Dict[str, Any]:
     }
     if fix_env:
         diag["fix_env"] = _append_missing_env_placeholders('.env', env_audit)
+    # Backward compatibility: replicate env variables into legacy 'environment' shape expected by older tests
+    legacy_env: Dict[str, Any] = {}
+    for name, meta in env_audit['variables'].items():
+        legacy_env[name] = {
+            'present': meta['present'],
+            # Provide separate field matching older expectation name
+            'value_masked': meta['masked'],
+        }
+    diag['environment'] = legacy_env
     return diag
 
 
@@ -294,6 +308,14 @@ def print_human(diag: Dict[str, Any]):
         print("Initialize a config: azuredevops-github-migration init --template jira-users")
 
 
+def _print_masked_env_only(diag: Dict[str, Any]):
+    print("Environment Variables (masked):")
+    for name, meta in diag['env']['variables'].items():
+        status = 'SET' if meta['present'] else 'MISSING'
+        masked = meta['masked'] or '-'
+        print(f"  {name}: {status} (masked={masked})")
+
+
 def _assist_loop(config: str):
     """Interactive remediation submenu for doctor.
 
@@ -341,14 +363,155 @@ def _assist_loop(config: str):
             print("Invalid selection – choose 1, 2, 3, or 4.")
 
 
+def _edit_env_interactive(env_path: str = '.env') -> dict:
+    """Interactively edit core .env values with a safety backup.
+
+    Returns metadata dict: {"changed": [names], "backup": path_or_None, "path": env_path}
+
+    Editing rules:
+      * Preserve ordering & comments of existing .env
+      * Create file if missing (with minimal header)
+      * Backup original to .env.bak.<timestamp>
+      * For each canonical variable, prompt user; blank input keeps existing
+      * Mask token values when displaying current (first 4 chars + ****)
+    """
+    import datetime
+
+    canonical_vars = [
+        ("AZURE_DEVOPS_PAT", "Azure DevOps PAT token"),
+        ("GITHUB_TOKEN", "GitHub PAT token"),
+        ("AZURE_DEVOPS_ORGANIZATION", "Azure DevOps organization slug"),
+        ("GITHUB_ORGANIZATION", "GitHub organization slug"),
+    ]
+
+    path = Path(env_path)
+    if not path.exists():
+        path.write_text(
+            "# Migration tool environment file\n"
+            "# Populate required tokens and organization identifiers. Never commit secrets.\n\n",
+            encoding='utf-8'
+        )
+
+    original_text = path.read_text(encoding='utf-8')
+    timestamp = datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')
+    backup_path = path.parent / f".env.bak.{timestamp}"
+    try:
+        backup_path.write_text(original_text, encoding='utf-8')
+    except Exception:  # pragma: no cover
+        backup_path = None
+
+    # Parse existing key-values (simple split, first occurrence wins)
+    existing: dict[str, str] = {}
+    lines = original_text.splitlines()
+    for ln in lines:
+        if not ln or ln.lstrip().startswith('#') or '=' not in ln:
+            continue
+        k, v = ln.split('=', 1)
+        k = k.strip(); v = v.strip()
+        if k and k not in existing:
+            existing[k] = v
+
+    def mask(val: str | None) -> str:
+        if not val:
+            return ''
+        if len(val) <= 4:
+            return val[0] + '***' if len(val) > 1 else '****'
+        return val[:4] + '****'
+
+    changed: list[str] = []
+    new_values: dict[str, str] = {}
+    print("\nEnter new values (leave blank to keep existing). Ctrl+C to abort editing.")
+    for key, desc in canonical_vars:
+        current_raw = existing.get(key, '')
+        display = mask(current_raw) if current_raw else '(unset)'
+        prompt = f"{key} [{desc}] current={display}: "
+        try:
+            user_input = input(prompt)
+        except KeyboardInterrupt:  # pragma: no cover - user abort
+            print("\nEdit aborted. No changes written.")
+            return {"changed": [], "backup": str(backup_path) if backup_path else None, "path": env_path, "aborted": True}
+        if user_input.strip() == '':
+            if current_raw:
+                new_values[key] = current_raw
+            continue
+        val = user_input.strip()
+        if val != current_raw:
+            changed.append(key)
+        new_values[key] = val
+
+    # Reconstruct file: update existing lines in-place, append missing canonical keys at end
+    updated_lines: list[str] = []
+    present_lower = {k.lower() for k in new_values.keys()}
+    for ln in lines:
+        if not ln or ln.lstrip().startswith('#') or '=' not in ln:
+            updated_lines.append(ln)
+            continue
+        k, _ = ln.split('=', 1)
+        key_norm = k.strip()
+        if key_norm in new_values:
+            updated_lines.append(f"{key_norm}={new_values[key_norm]}")
+        else:
+            updated_lines.append(ln)
+    # Append any missing canonical keys
+    for key, _ in canonical_vars:
+        if key not in existing and key in new_values:
+            updated_lines.append(f"{key}={new_values[key]}")
+
+    new_content = "\n".join(updated_lines).rstrip() + "\n"
+    if new_content != original_text:
+        path.write_text(new_content, encoding='utf-8')
+        # Reload into process (overwriting placeholders if any)
+        _load_env_file(str(path))
+    else:
+        # No changes beyond maybe newline normalization
+        changed = []
+    return {"changed": changed, "backup": str(backup_path) if backup_path else None, "path": env_path}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Diagnostic utility for migration tool")
     parser.add_argument('--config', default='config.json', help='Config file to validate (json or yaml)')
     parser.add_argument('--json', action='store_true', help='Output JSON only (machine-readable)')
     parser.add_argument('--fix-env', action='store_true', help='Append missing canonical env variable placeholders to .env')
     parser.add_argument('--assist', action='store_true', help='Open interactive remediation submenu after diagnostics')
+    parser.add_argument('--print-env', action='store_true', help='Print only masked environment variable status and exit')
+    parser.add_argument('--edit-env', action='store_true', help='Interactively edit and persist core .env variables (with backup)')
+    parser.add_argument('--doctor-mode', choices=[
+        'plain','fix','assist','fix-assist','edit','edit-assist'
+    ], help='Shortcut composite for doctor modes (non-interactive): maps to combinations of --fix-env/--assist/--edit-env')
     args = parser.parse_args(argv)
+    # Apply composite doctor-mode if provided (unless user also manually set conflicting flags)
+    if args.doctor_mode:
+        mode = args.doctor_mode
+        # Only set flags if user did not already specify them explicitly to avoid surprise overrides
+        if mode in ('fix','fix-assist') and not args.fix_env:
+            args.fix_env = True
+        if mode in ('assist','fix-assist','edit-assist') and not args.assist:
+            args.assist = True
+        if mode in ('edit','edit-assist') and not args.edit_env:
+            args.edit_env = True
+    if args.json and args.edit_env:
+        print('--edit-env cannot be combined with --json output mode (interactive editing).', flush=True)
+        return 2
+    # Initial diagnostics (may append placeholders if requested)
     diag = gather_diagnostics(args.config, fix_env=args.fix_env)
+    edit_meta = None
+    if args.edit_env:
+        print("\n=== .env Interactive Editor ===")
+        edit_meta = _edit_env_interactive('.env')
+        if edit_meta.get('aborted'):
+            # Still show original diagnostics
+            pass
+        else:
+            # Re-run diagnostics to reflect new values
+            diag = gather_diagnostics(args.config)
+    if args.print_env and args.json:
+        # If both requested, prioritize JSON style (already contains environment)
+        print(json.dumps(diag, indent=2))
+        return 0
+    if args.print_env:
+        _print_masked_env_only(diag)
+        return 0 if diag['env']['variables']['GITHUB_TOKEN']['present'] or diag['env']['variables']['AZURE_DEVOPS_PAT']['present'] else 1
     if args.json:
         print(json.dumps(diag, indent=2))
     else:
@@ -362,6 +525,13 @@ def main(argv=None):
                     print(f"Failed to append placeholders: {diag['fix_env']['error']}")
                 else:
                     print("All canonical environment variable placeholders already present.")
+        if args.edit_env and edit_meta:
+            if edit_meta.get('changed'):
+                print(f"Edited variables: {', '.join(edit_meta['changed'])}")
+            else:
+                print("No variable changes written.")
+            if edit_meta.get('backup'):
+                print(f"Backup saved: {edit_meta['backup']}")
         if args.assist and not args.json:
             _assist_loop(args.config)
     # Exit non-zero if critical failures

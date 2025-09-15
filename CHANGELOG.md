@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.1.0] - 2024-01-XX
 
+## [2.2.0] - 2025-09-15
+### Added
+- `--doctor-mode` composite flag for `doctor` command allowing direct non-interactive execution of specific modes:
+  - `plain` (default diagnostics)
+  - `fix` (diagnostics + `--fix-env`)
+  - `assist` (diagnostics + interactive remediation `--assist`)
+  - `fix-assist` (diagnostics + placeholders + remediation)
+  - `edit` (open editor `--edit-env` then diagnostics)
+  - `edit-assist` (edit + remediation)
+
+### Changed
+- Interactive menu simplified: single "🩺 Doctor diagnostics" entry now opens a submenu instead of two separate root entries.
+
+### Fixed
+- Removed incorrect duplicate root menu item labelled "Doctor submenu (assist)"; improves UX clarity and keyboard navigation order.
+
+### Documentation
+- Updated internal docs implicitly via CHANGELOG (no user-guide structural changes required).
+
+
 ## [Unreleased]
 ### Removed
 - Secret management / required secrets logic from `scripts/verify-migration.ps1` and associated GitHub Actions workflow inputs (`required_secrets`, `fail_on_missing_secrets`).

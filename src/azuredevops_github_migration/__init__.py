@@ -5,7 +5,7 @@ A comprehensive production-ready tool for migrating repositories, work items,
 and pipelines from Azure DevOps to GitHub with full Git history preservation.
 """
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 __author__ = "Stewart Burton"
 __email__ = "stewart@example.com"
 __license__ = "MIT"
