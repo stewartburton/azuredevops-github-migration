@@ -28,7 +28,7 @@ def test_doctor_mode_fix_adds_field():
     # Remove .env if exists to simulate missing file to allow placeholder append
     if os.path.exists('.env'):
         try: os.remove('.env')
-        except Exception: pass
+        except (OSError, PermissionError): pass
     code, out, err = run_doctor('fix')
     data = json.loads(out)
     # fix_env key should be present with path metadata
