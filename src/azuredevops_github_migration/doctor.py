@@ -490,6 +490,7 @@ def main(argv=None):
             args.assist = True
         if mode in ('edit','edit-assist') and not args.edit_env:
             args.edit_env = True
+    args = parser.parse_args(argv)
     if args.json and args.edit_env:
         print('--edit-env cannot be combined with --json output mode (interactive editing).', flush=True)
         return 2

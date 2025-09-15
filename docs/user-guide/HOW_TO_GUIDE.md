@@ -209,6 +209,34 @@ Menu options:
 
 Placeholder detection: Any value that still begins with the template prefixes (e.g. `your_azure_devops_personal_access_token`) is treated as a placeholder and shown in the submenu so you can quickly identify incomplete setup.
 
+#### (New) Safe Interactive Editing of `.env`
+
+You can now persist edits to the four canonical variables without manually opening a text editor:
+
+```
+azuredevops-github-migration doctor --edit-env
+```
+
+Features:
+* Creates a timestamped backup (`.env.bak.YYYYmmddHHMMSS`) before modifying the file.
+* Prompts for each required variable; press Enter to keep the current value (masked display for existing secrets).
+* Preserves existing comments and ordering where possible.
+* Appends any missing canonical keys if they were absent (e.g., only an alias existed).
+* Automatically reloads the updated `.env` and re-runs diagnostics inside the same invocation.
+
+Combine with placeholder append first if your file is very old:
+```
+azuredevops-github-migration doctor --fix-env --edit-env
+```
+
+Notable differences vs `update-env` (PowerShell wrapper):
+| Action | Modifies `.env` | Creates Backup | Requires PowerShell | Purpose |
+|--------|-----------------|----------------|---------------------|---------|
+| `update-env` | No | No | Yes | Load & audit environment via script |
+| `doctor --edit-env` | Yes | Yes | No | Persist updates to required variables |
+
+`--edit-env` cannot be combined with `--json` because it is interactive. If you need JSON output after editing, run a second command: `azuredevops-github-migration doctor --json`.
+
 ## Authentication Setup
 
 Use least privilege. Start with the minimum scopes and add only if the tool reports an authorization error for a feature you actually need.

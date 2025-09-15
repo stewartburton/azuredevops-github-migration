@@ -258,7 +258,7 @@ pip install -e .
 - **Environment Loader (New)**: Use `azuredevops-github-migration update-env` to invoke the PowerShell helper and load variables from `.env`
 - **Doctor Assist (New)**: Use `azuredevops-github-migration doctor --assist` for an interactive remediation submenu (run PowerShell loader, append placeholders, re-run diagnostics)
 - **.env Editor (New)**: Use `azuredevops-github-migration doctor --edit-env` to interactively edit & persist required environment variables with automatic timestamped backup
- - **Doctor Mode Shortcuts (New)**: Use `--doctor-mode <plain|fix|assist|fix-assist|edit|edit-assist>` for fast non-interactive combinations (see Doctor section)
+- **Doctor Mode Shortcuts (New)**: Use `--doctor-mode <plain|fix|assist|fix-assist|edit|edit-assist>` for fast non-interactive combinations (see Doctor section)
 
 ## 📁 Project Structure
 
