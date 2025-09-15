@@ -40,7 +40,7 @@ pip install azuredevops-github-migration
 # 2. Initialize config & .env template
 azuredevops-github-migration init --template full   # or jira-users
 
-# 3. Edit .env (tokens + org slugs) & config.json
+# 3. Edit .env (tokens + org names) & config.json
 
 # 4. Run diagnostics (optional but recommended)
 azuredevops-github-migration doctor
@@ -596,7 +596,7 @@ Placeholders (values beginning with the template prefixes, e.g. your_azure_devop
 
 Interactive .env editing (new) or via composite shortcut (`--doctor-mode edit` / `--doctor-mode edit-assist`):
 ```
-# Safely edit required variables (tokens & org slugs) with backup (.env.bak.<UTC timestamp>)
+# Safely edit required variables (tokens & org names) with backup (.env.bak.<UTC timestamp>)
 azuredevops-github-migration doctor --edit-env
 
 # Combine with placeholder append first (if you want canonical lines ensured)
@@ -626,6 +626,17 @@ azuredevops-github-migration doctor --fix-env
 azuredevops-github-migration doctor --fix-env --json
 ```
 This does NOT overwrite existing secrets or alias values; it only appends placeholder lines for any of the four standard variables that are absent from the `.env` file. If an alias (e.g. `AZURE_DEVOPS_ORG`) exists but the canonical (`AZURE_DEVOPS_ORGANIZATION`) is missing, a placeholder for the canonical name is still appended so future tooling & docs remain consistent.
+
+### Skipping Network Reachability Checks (Offline / Restricted)
+
+If you're running in a locked-down environment (no direct egress to `api.github.com` or `dev.azure.com`) and only want to validate local configuration, add `--skip-network`:
+
+```
+azuredevops-github-migration doctor --skip-network
+azuredevops-github-migration doctor --skip-network --fix-env --assist
+```
+
+When enabled, the "Network Reachability" section is replaced with a skipped notice.
 
 ### Migration Config
 

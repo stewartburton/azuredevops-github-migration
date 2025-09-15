@@ -56,7 +56,7 @@ def run_update_env(path: str = '.env') -> int:
             f.write('# Required tokens\n')
             f.write('AZURE_DEVOPS_PAT=\n')
             f.write('GITHUB_TOKEN=\n')
-            f.write('\n# Organization slugs (aliases: AZURE_DEVOPS_ORG / GITHUB_ORG)\n')
+            f.write('\n# Organization names (aliases: AZURE_DEVOPS_ORG / GITHUB_ORG)\n')
             f.write('AZURE_DEVOPS_ORGANIZATION=\n')
             f.write('GITHUB_ORGANIZATION=\n')
             f.write('\n# Optional custom endpoints (usually leave default)\n')

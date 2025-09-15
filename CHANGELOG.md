@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [Unreleased]
+
+### Added
+- `doctor --skip-network` flag to bypass outbound TCP reachability tests (useful for offline / restricted networks).
+
+### Changed
+- Replaced terminology "organization slug" with "organization name" across interactive prompts, .env templates, and documentation for clarity.
+- Enhanced placeholder append logic: canonical env variable lines are added (or supplemented with placeholders) even if an alias exists or an empty assignment is present.
+
+### Fixed
+- `doctor` assist submenu option 2 (append placeholders) now adds canonical lines when only aliases or empty values exist, preventing confusing "No new placeholders added" messages.
 ### Removed
 - Secret management / required secrets logic from `scripts/verify-migration.ps1` and associated GitHub Actions workflow inputs (`required_secrets`, `fail_on_missing_secrets`).
 - Converted/migrated pipeline workflow artifacts (e.g. `rick.yml`) from the tool repository to avoid bundling target migration outputs.
