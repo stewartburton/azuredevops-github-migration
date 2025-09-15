@@ -129,8 +129,8 @@ def interactive_menu():
     # Using explicit Choice objects allows future metadata
     choices = [
         questionary.Choice(title=f"{ico('🔐 ')}Update / load .env", value='update'),
-        # Single doctor entry opens a submenu of diagnostic modes
-        questionary.Choice(title=f"{ico('🩺 ')}Doctor diagnostics", value='doctor_menu'),
+    # Single doctor entry opens a submenu of diagnostic modes
+    questionary.Choice(title=f"{ico('🩺 ')}Doctor diagnostics", value='doctor_menu'),
         questionary.Choice(title=f"{ico('🛠  ')}Init configuration files", value='init'),
         questionary.Choice(title=f"{ico('🔎 ')}Analyze organization", value='analyze'),
         questionary.Choice(title=f"{ico('📦 ')}Batch migrate", value='batch'),
