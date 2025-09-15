@@ -60,8 +60,15 @@ class AzureDevOpsAnalyzer:
 
         cfg = subst(raw)
         # Minimal validation for required keys used here
-        if not cfg.get('azure_devops', {}).get('organization'):
-            raise ValueError("Azure DevOps organization not set (azure_devops.organization)")
+        org_val = cfg.get('azure_devops', {}).get('organization')
+        if org_val in ("your-organization-name", "ORG_NAME_PLACEHOLDER", None, ""):
+            # Attempt env override before failing
+            env_org = os.getenv('AZURE_DEVOPS_ORGANIZATION') or os.getenv('AZURE_DEVOPS_ORG')
+            if env_org:
+                cfg.setdefault('azure_devops', {})['organization'] = env_org
+                print(f"[WARN] Placeholder azure_devops.organization replaced with environment value '{env_org}'")
+            else:
+                raise ValueError("Azure DevOps organization not set (azure_devops.organization)")
         if not cfg.get('azure_devops', {}).get('personal_access_token'):
             raise ValueError("Azure DevOps personal access token not set (azure_devops.personal_access_token)")
         return cfg

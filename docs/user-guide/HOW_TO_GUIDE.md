@@ -32,6 +32,48 @@ Concise, task‑oriented reference for planning and executing migrations. Deep i
 | Assist submenu | `azuredevops-github-migration doctor --doctor-mode assist` |
 | Interactive menu | `azuredevops-github-migration interactive` |
 
+### (New) Quickstart Project Selection Navigation
+
+When running `quickstart`, if `questionary` is installed you get an enhanced project selector optimized for large organizations:
+
+| Feature | Usage | Detail |
+|---------|-------|--------|
+| Pagination | Select `Next page ▶` / `◀ Prev page` | Page size fixed at 10 projects |
+| Search / filter | Choose `Search / filter` then enter a query | Matches substring OR ordered-character fuzzy (all chars appear in order) |
+| Clear filter | Appears while a filter is active | Restores full list & resets to page 1 |
+| Jump to letter | Choose `Jump to letter` then type a letter | Jumps to first project (filtered set) starting with that letter |
+| Skip (open interactive menu) | Choose `Skip (open interactive menu)` | Immediately launches full interactive TUI; skips post-wizard recommendations |
+| Cancel selection | Esc key or `Cancel selection` choice | Exits without selecting a project |
+
+Fuzzy examples:
+```
+Query: gt  -> GammaTool (g ... t in order)
+Query: as  -> AlphaProject, BetaSample (letters appear sequentially in each)
+```
+
+Behavior notes:
+* Selection updates the recommendation list so the first suggested command becomes `analyze --project <Selected> --create-plan` instead of full org analysis.
+* If you cancel selection the recommendations show `<Project>` placeholders.
+* Choosing Skip launches the full interactive menu immediately (bypasses recommendation printout) – useful after initial discovery.
+* The internal project listing always suppresses work item enumeration (`skip_work_items=True`) to minimize required PAT scopes.
+
+### Automatic Work Item Skipping (Jira Mode)
+
+If `config.json` has `"migration": { "migrate_work_items": false }` (the default in the `jira-users` template), the interactive Analyze action auto-appends `--skip-work-items` so you are not prompted for or blocked by missing Work Item scope. To re-enable, edit the config to set the flag true and rerun analyze.
+
+Install dependency for selector:
+```bash
+pip install questionary
+```
+Disable selector explicitly:
+```bash
+azuredevops-github-migration quickstart --no-project-select
+```
+Run without any interactive pauses:
+```bash
+azuredevops-github-migration quickstart --non-interactive
+```
+
 ## 2. Prerequisites
 | Requirement | Notes |
 |-------------|-------|

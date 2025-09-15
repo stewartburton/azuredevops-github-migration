@@ -15,22 +15,113 @@ Production‑ready CLI to migrate Azure DevOps repositories (and optionally work
 | Batch Mode | Plan‑driven multi‑repo execution |
 | Analysis | Inventory & migration planning report |
 | Diagnostics | `doctor`, placeholder auto‑append, interactive remediation & editor |
-| Interactive UX | Arrow‑key menu (`interactive`) + PowerShell env loader (`update-env`) |
+| Interactive UX | Arrow‑key menu (`interactive`) with streamlined diagnostics & env actions |
+| Project Selection UX | Paginated (10 / page) quickstart project picker with Search / filter (substring + fuzzy), Jump to letter, Skip → open menu |
 | Safety | Dry runs, rate limiting, retry logic, masked tokens |
 | Reporting | JSON migration reports + verification script integration |
 | Extensibility | Clean Python package layout, tests, semantic versioning |
 
 ---
 
-## 🚀 Quick Start (Jira Users – No Work Items)
+## 🚀 Quick Start (Wizard)
+First-time users: let the guided wizard chain initialization, environment setup, diagnostics, and a quick org discovery.
+```bash
+pip install azuredevops-github-migration
+azuredevops-github-migration quickstart --template jira-users
+```
+Flags:
+| Flag | Purpose |
+|------|---------|
+| `--template full` | Use full (work items enabled) config template |
+| `--skip-env` | Skip interactive env entry (if .env already populated) |
+| `--skip-init` | Do not create config even if missing |
+| `--no-analyze` | Skip project listing step |
+| `--non-interactive` | Auto-advance without Y/n confirmations |
+| `--no-project-select` | Disable interactive project selection (still prints list) |
+| `--open-menu` | Automatically launch the interactive menu after the wizard |
+
+Auto-patch behavior:
+If your existing `config.json` still contains legacy placeholders like `"your-organization-name"` or `"your-github-org"`, the wizard will (non-destructively) back up the file (e.g. `config.json.bak.<timestamp>`) and replace those fields with the values from `AZURE_DEVOPS_ORGANIZATION` / `GITHUB_ORGANIZATION` (or their aliases) when available. This prevents early 401 errors like the one you observed.
+
+Manual path (legacy quick start) for Jira-mode only:
 ```bash
 pip install azuredevops-github-migration
 cp examples/jira-users-config.json config.json
+azuredevops-github-migration doctor --edit-env
+azuredevops-github-migration doctor
 azuredevops-github-migration analyze --project "MyProject" --create-plan --skip-work-items
 azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --dry-run
 azuredevops-github-migration migrate --project "MyProject" --repo "my-repo"
 azuredevops-github-migration batch --plan migration_plan_<org>_*.json
 ```
+
+### Project Selection Enhancement (New)
+
+During the quickstart run the tool lists Azure DevOps projects (lightweight, repository/work item enumeration skipped). If the optional dependency `questionary` is installed you can pick one with the arrow keys. The chosen project is then injected into the recommended follow‑up commands using `--project` so you avoid a full organization analysis by default.
+
+Benefits:
+* Faster: analyzing a single project first is usually much quicker and surfaces structural issues early.
+* Safer: avoids long‑running full org scans when just trial‑migrating a couple of repos.
+* Clear next steps: command 1 now reflects your selection (`analyze --project <Name> --create-plan`).
+
+If you skip selection (press Esc or disable with `--no-project-select`) the wizard prints generic examples retaining `<Project>` placeholders, plus guidance for full org analysis.
+
+Install interactive dependency:
+```bash
+pip install questionary
+```
+
+Suppress selection explicitly:
+```bash
+azuredevops-github-migration quickstart --no-project-select
+```
+
+### Project List Navigation (Pagination, Search, Jump, Skip)
+
+When you have many Azure DevOps projects (e.g. 100+), the quickstart wizard provides an enhanced selector:
+
+| Feature | How to Use | Notes |
+|---------|------------|-------|
+| Pagination | Use Next page ▶ / ◀ Prev page entries | Fixed page size of 10 projects per page (current release) |
+| Search / filter | Choose "Search / filter" then type a query | Matches if query is a substring OR all characters appear in order (fuzzy subsequence). Case‑insensitive. |
+| Clear filter | Appears after a filter is active | Restores full project list, returns to first page |
+| Jump to letter | Choose "Jump to letter" and enter a single character | Jumps to page containing first project starting with that letter (within current filtered list) |
+| Skip (open interactive menu) | Select "Skip (open interactive menu)" | Immediately launches full interactive menu, bypassing post‑wizard recommendations |
+| Cancel selection | Press Esc or pick "Cancel selection" | No project selected; recommendations show generic `<Project>` placeholder |
+
+Fuzzy example:
+```
+Query: gt
+Matches: GammaTool (because 'g' ... 't' appear in order)
+```
+
+Performance note: The quickstart always retrieves the list of projects with work items suppressed (`skip_work_items` internally) so Jira users (or anyone not migrating issues) are not forced to grant the Work Items scope just to enumerate projects.
+
+### Automatic Work Item Skipping in Jira Mode
+
+If you initialized with the `jira-users` template (which sets `"migration": {"migrate_work_items": false}`) the interactive Analyze path will automatically inject `--skip-work-items`. This:
+* Avoids unnecessary API calls & permission requirements
+* Produces leaner migration plans focused on repositories & pipelines
+* Keeps recommendations consistent with Jira‑centric workflows
+
+You can still force work item analysis later by editing `config.json` to set `migrate_work_items` to `true` and re‑running analyze without the skip flag.
+
+### Keyboard / Input Tips
+* You can press Enter on any navigation entry (Next / Prev / Search / Jump / Skip).
+* Pressing Esc (or choosing Cancel selection) exits selection gracefully.
+* The selector only appears when `questionary` is installed and you are not using `--non-interactive` or `--no-project-select`.
+
+### Launching the Interactive Menu Automatically
+
+Add `--open-menu` to jump straight into the arrow‑key menu after the wizard completes (no prompt). Without the flag, the wizard will ask:
+```
+Open interactive menu now? [Y/n]:
+```
+Press Enter (default yes) or type `n` to skip.
+
+### Why Not Analyze the Whole Org by Default?
+
+Running `analyze --create-plan` without `--project` walks every project and repository which can be significantly slower (and in some cases requires broader permissions). The quickstart now recommends a project‑scoped analyze first. A second line below the recommendation still shows how to run the full org analyze when you are ready.
 
 ## ⚙️ Standard Workflow
 ```bash
@@ -40,7 +131,7 @@ pip install azuredevops-github-migration
 # 2. Initialize config & .env template
 azuredevops-github-migration init --template full   # or jira-users
 
-# 3. Edit .env (tokens + org slugs) & config.json
+# 3. Edit .env (tokens + org names) & config.json
 
 # 4. Run diagnostics (optional but recommended)
 azuredevops-github-migration doctor
@@ -69,25 +160,19 @@ azuredevops-github-migration batch --plan migration_plan_<org>_*.json
 | `migrate` | Migrate a single repository | Iterative testing / final run |
 | `batch` | Execute plan for multiple repos | Wave migrations |
 | `doctor` | Environment & readiness diagnostics | Pre-flight |
-| `update-env` | PowerShell loader for `.env` | Windows onboarding |
+| (env load via Doctor submenu) | PowerShell loader for `.env` | Windows onboarding |
 | `interactive` | Arrow‑key menu wrapper | New users |
 
-### Doctor Composite Modes
-Use `--doctor-mode` for quick combinations:
+### Doctor Composite Modes (Deprecated)
+`--doctor-mode` shortcuts are deprecated. They still work for backward compatibility but will be removed in a future major release. Prefer explicit flags or the interactive submenu / quickstart wizard.
 
-| Mode | Expands To | Description |
-|------|------------|-------------|
-| `plain` | diagnostics | Human / JSON diagnostics only |
-| `fix` | `--fix-env` | Append missing canonical env placeholders |
-| `assist` | `--assist` | Open remediation submenu |
-| `fix-assist` | `--fix-env --assist` | Append placeholders then assist |
-| `edit` | `--edit-env` | Safe interactive .env editor (with backup) |
-| `edit-assist` | `--edit-env --assist` | Edit then remediation submenu |
-
-Examples:
+Replacement examples:
 ```bash
-azuredevops-github-migration doctor --doctor-mode fix-assist
-azuredevops-github-migration doctor --doctor-mode edit --json   # (note: edit & json cannot combine; omit --json here)
+# Old: doctor --doctor-mode fix-assist
+azuredevops-github-migration doctor --fix-env --assist
+
+# Old: doctor --doctor-mode edit-assist
+azuredevops-github-migration doctor --edit-env --assist
 ```
 
 ---
@@ -109,6 +194,103 @@ asciinema rec -c "azuredevops-github-migration interactive" interactive.cast
 asciinema upload interactive.cast
 ```
 
+### Dynamic Menu Behavior
+
+The interactive menu hides the "🛠  Init configuration files" option automatically once both `config.json` and `.env` are present to reduce clutter after initial setup. You can still re-run initialization directly via:
+
+```bash
+azuredevops-github-migration init --force --template full
+```
+
+Or force the init entry to always appear in the menu by setting:
+
+```bash
+set MIGRATION_SHOW_INIT_ALWAYS=1        # Windows (cmd)
+$env:MIGRATION_SHOW_INIT_ALWAYS=1       # PowerShell
+export MIGRATION_SHOW_INIT_ALWAYS=1     # bash/zsh
+```
+
+Doctor submenu (current interactive layout):
+
+1. Run diagnostics (doctor)
+2. Enter / update environment variables (--edit-env)
+3. Append missing env placeholders (doctor --fix-env)
+4. Remediation assistant (--assist)
+5. Back
+
+The separate env loader entry was removed; environment editing is now done via the safe editor and remediation assistant.
+
+### Analyze Scope Selector (Enhanced)
+
+Selecting "🔎 Analyze organization" now presents a scope choice:
+
+1. Single project (faster) – prompts with the same paginated fuzzy-search project picker used by the Quickstart wizard.
+2. Full organization – walks all projects & repositories (slower, broader permissions may be needed).
+
+The project picker features:
+| Capability | Description |
+|------------|-------------|
+| Pagination | 10 projects per page with Prev / Next navigation |
+| Substring & fuzzy search | Type any substring OR non-contiguous sequence (e.g. `aps` matches `Anthony_Project_Sandbox`) |
+| Jump to letter | Quickly jump to first project starting with a letter |
+| Clear filter | Reset active filter and return to unfiltered list |
+| Cancel | Return to main menu without running analysis |
+
+If only one project exists, it's auto-selected. The analyze command is invoked with `--project <Name> --create-plan` to produce a scoped plan quickly. This mirrors the Quickstart guidance (encouraging a small-scope first pass before full org analysis).
+
+### Migrate Wizard (Enhanced)
+
+Selecting "🚚 Migrate repository" now launches an inline wizard that avoids the previous error requiring `--project` and `--repo` flags:
+
+1. Project picker (same enhanced UX as above)
+2. Repository picker (within selected project; pagination + fuzzy + jump-to-letter)
+3. Mode selection: Dry run vs Real migration
+4. Optional custom GitHub repository name (leave blank to reuse source repo name)
+5. Executes `migrate` with the assembled arguments (e.g. `--project <P> --repo <R> --dry-run`)
+
+Cancelling at any step safely returns to the main menu without side effects.
+
+Underlying selection logic is implemented in a reusable internal helper (`_paginated_picker`) shared by analyze and migrate flows for consistent UX.
+
+### Readiness Banner
+
+When you launch the interactive menu a one-line readiness banner summarizes environment state:
+
+Examples:
+```
+=== Environment Readiness: READY ===
+Status: PAT=OK TOKEN=OK ORGANIZATION=OK ORGANIZATION=OK
+```
+```
+=== Environment Readiness: INCOMPLETE ===
+ - config.json missing (run init)
+ - Missing: AZURE_DEVOPS_PAT, GITHUB_TOKEN
+Status: PAT=MISSING TOKEN=MISSING ORGANIZATION=OK ORGANIZATION=OK
+```
+Legend:
+- OK = present & not a placeholder
+- PH = placeholder value still present
+- MISSING = variable not set
+
+Disable the banner:
+```bash
+export MIGRATION_NO_BANNER=1        # bash/zsh
+$env:MIGRATION_NO_BANNER=1          # PowerShell
+set MIGRATION_NO_BANNER=1           # cmd.exe
+```
+
+Placeholders can be resolved via: `doctor --edit-env` (interactive editor) or Quick Start.
+
+### Recommended Interactive Flow
+
+1. Init (if needed) – generates `config.json` + `.env` template
+2. Doctor → Enter / update environment variables (populate PATs & orgs)
+3. Doctor → Run diagnostics (verify all four are SET, no placeholders)
+4. Analyze organization (create plan / reports)
+5. Doctor (optional) – final sanity check
+6. Migrate repository (dry run first with `--dry-run`)
+7. Batch migrate (when confident) / verify
+
 ---
 
 ## 🔐 Configuration Essentials
@@ -119,7 +301,7 @@ GITHUB_TOKEN=ghp_xxxx
 AZURE_DEVOPS_ORGANIZATION=your-ado-org   # alias: AZURE_DEVOPS_ORG
 GITHUB_ORGANIZATION=your-gh-org         # alias: GITHUB_ORG
 ```
-`config.json` (example excerpt):
+`config.json` (example excerpt – templates now reference env variables for org names):
 ```json
 {
     "azure_devops": {"organization": "${AZURE_DEVOPS_ORGANIZATION}", "project": "MyProject"},
@@ -127,7 +309,7 @@ GITHUB_ORGANIZATION=your-gh-org         # alias: GITHUB_ORG
     "migration": {"migrate_work_items": false, "migrate_pipelines": true}
 }
 ```
-Use `doctor --fix-env` to append any missing canonical variables without touching existing values.
+Legacy templates (pre v2.2.x) hard‑coded `"your-organization-name"`; those will be auto‑patched by `quickstart` if matching env vars are set. Use `doctor --fix-env` to append any missing canonical variables without touching existing values.
 
 ---
 
@@ -596,7 +778,7 @@ Placeholders (values beginning with the template prefixes, e.g. your_azure_devop
 
 Interactive .env editing (new) or via composite shortcut (`--doctor-mode edit` / `--doctor-mode edit-assist`):
 ```
-# Safely edit required variables (tokens & org slugs) with backup (.env.bak.<UTC timestamp>)
+# Safely edit required variables (tokens & org names) with backup (.env.bak.<UTC timestamp>)
 azuredevops-github-migration doctor --edit-env
 
 # Combine with placeholder append first (if you want canonical lines ensured)
@@ -626,6 +808,17 @@ azuredevops-github-migration doctor --fix-env
 azuredevops-github-migration doctor --fix-env --json
 ```
 This does NOT overwrite existing secrets or alias values; it only appends placeholder lines for any of the four standard variables that are absent from the `.env` file. If an alias (e.g. `AZURE_DEVOPS_ORG`) exists but the canonical (`AZURE_DEVOPS_ORGANIZATION`) is missing, a placeholder for the canonical name is still appended so future tooling & docs remain consistent.
+
+### Skipping Network Reachability Checks (Offline / Restricted)
+
+If you're running in a locked-down environment (no direct egress to `api.github.com` or `dev.azure.com`) and only want to validate local configuration, add `--skip-network`:
+
+```
+azuredevops-github-migration doctor --skip-network
+azuredevops-github-migration doctor --skip-network --fix-env --assist
+```
+
+When enabled, the "Network Reachability" section is replaced with a skipped notice.
 
 ### Migration Config
 

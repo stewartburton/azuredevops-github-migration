@@ -3,14 +3,25 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_PATH = PROJECT_ROOT / 'src'
 
 
 def _run_doctor(args, cwd: Path) -> subprocess.CompletedProcess:
+    env = os.environ.copy()
+    existing = env.get('PYTHONPATH','')
+    new_path = str(SRC_PATH)
+    if existing:
+        if new_path not in existing.split(os.pathsep):
+            env['PYTHONPATH'] = new_path + os.pathsep + existing
+    else:
+        env['PYTHONPATH'] = new_path
     return subprocess.run(
         [sys.executable, "-m", "azuredevops_github_migration.doctor", *args],
         cwd=str(cwd),
         text=True,
         capture_output=True,
+        env=env,
     )
 
 

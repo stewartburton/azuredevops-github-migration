@@ -1,4 +1,8 @@
 import json, subprocess, sys, os, re
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_PATH = PROJECT_ROOT / 'src'
 
 PACKAGE = 'azuredevops_github_migration'
 
@@ -12,8 +16,16 @@ MODES_JSON = [
 
 
 def run_doctor(mode):
+    env = os.environ.copy()
+    existing = env.get('PYTHONPATH','')
+    new_path = str(SRC_PATH)
+    if existing:
+        if new_path not in existing.split(os.pathsep):
+            env['PYTHONPATH'] = new_path + os.pathsep + existing
+    else:
+        env['PYTHONPATH'] = new_path
     cmd = [sys.executable, '-m', PACKAGE + '.doctor', '--doctor-mode', mode, '--json']
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
     return proc.returncode, proc.stdout, proc.stderr
 
 

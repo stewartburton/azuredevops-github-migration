@@ -3,6 +3,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_PATH = PROJECT_ROOT / 'src'
+
 
 def test_dotenv_loading(tmp_path, monkeypatch):
     """Ensure that running the CLI loads variables from a .env file in CWD.
@@ -19,12 +22,21 @@ def test_dotenv_loading(tmp_path, monkeypatch):
     (env_dir / ".env").write_text("TEST_DOTENV_INJECT=1\n")
 
     # Run the CLI version command in that directory
+    env = os.environ.copy()
+    existing = env.get('PYTHONPATH','')
+    new_path = str(SRC_PATH)
+    if existing:
+        if new_path not in existing.split(os.pathsep):
+            env['PYTHONPATH'] = new_path + os.pathsep + existing
+    else:
+        env['PYTHONPATH'] = new_path
     result = subprocess.run(
         [sys.executable, "-m", "azuredevops_github_migration.cli", "--version"],
         cwd=env_dir,
         capture_output=True,
         text=True,
         check=True,
+        env=env,
     )
     assert "Azure DevOps to GitHub Migration Tool" in result.stdout
 
