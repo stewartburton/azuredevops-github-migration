@@ -5,7 +5,7 @@ import subprocess
 import sys
 import os
 import shutil
-from typing import List
+from typing import List, Sequence, Dict
 
 try:  # Optional dependency
     import questionary  # type: ignore
@@ -108,53 +108,142 @@ def _simple_env_load(path: str):
         print(f"[WARN] Could not load env file into current process: {e}")
 
 
+def compute_menu_choices(no_icons: bool) -> Sequence[tuple[str, str]]:
+    """Return sequence of (value, title_without_qmark) for top-level menu (testable).
+
+    Excludes the env update action as a top-level item (now nested under doctor submenu).
+    """
+    ico = (lambda sym: sym if (not no_icons) else '')
+    items: list[tuple[str, str]] = []
+    # Doctor always present (environment actions nested within)
+    items.append(('doctor_menu', f"{ico('🩺 ')}Doctor diagnostics"))
+    # Conditionally include init
+    config_missing = not os.path.exists('config.json')
+    env_missing = not os.path.exists('.env')
+    show_init_always = bool(os.environ.get('MIGRATION_SHOW_INIT_ALWAYS'))
+    if config_missing or env_missing or show_init_always:
+        items.append(('init', f"{ico('🛠  ')}Init configuration files"))
+    # Core flow actions
+    items.extend([
+        ('analyze', f"{ico('🔎 ')}Analyze organization"),
+        ('batch', f"{ico('📦 ')}Batch migrate"),
+        ('migrate', f"{ico('🚚 ')}Migrate repository"),
+        ('quit', f"{ico('❌ ')}Quit"),
+    ])
+    return items
+
+
+PLACEHOLDER_PREFIXES = (
+    'your_azure_devops_personal_access_token',
+    'your_github_personal_access_token',
+    'your_azure_devops_org',
+    'your_github_org'
+)
+
+def _mask(val: str | None) -> str:
+    if not val:
+        return ''
+    if len(val) <= 4:
+        return val[0] + '***' if len(val) > 1 else '****'
+    return val[:4] + '****'
+
+def _gather_readiness() -> Dict[str, any]:
+    cfg_exists = os.path.exists('config.json')
+    env_exists = os.path.exists('.env')
+    # Core vars
+    core = ['AZURE_DEVOPS_PAT','GITHUB_TOKEN','AZURE_DEVOPS_ORGANIZATION','GITHUB_ORGANIZATION']
+    status = {}
+    all_present = True
+    any_placeholders = False
+    for k in core:
+        raw = os.environ.get(k)
+        present = bool(raw)
+        placeholder = False
+        if present:
+            low = raw.lower()
+            for p in PLACEHOLDER_PREFIXES:
+                if low.startswith(p):
+                    placeholder = True
+                    any_placeholders = True
+                    break
+        else:
+            all_present = False
+        status[k] = {
+            'present': present,
+            'placeholder': placeholder,
+            'masked': _mask(raw)
+        }
+    readiness_level = 'READY' if (cfg_exists and env_exists and all_present and not any_placeholders) else 'INCOMPLETE'
+    return {
+        'config': cfg_exists,
+        'env_file': env_exists,
+        'all_present': all_present,
+        'any_placeholders': any_placeholders,
+        'vars': status,
+        'level': readiness_level
+    }
+
+def _print_readiness_banner():
+    if os.environ.get('MIGRATION_NO_BANNER') == '1':
+        return
+    r = _gather_readiness()
+    level = r['level']
+    # Simple color codes (can be disabled by NO_COLOR from earlier logic)
+    green = '\033[92m'
+    yellow = '\033[93m'
+    reset = '\033[0m'
+    color_disabled = bool(os.environ.get('NO_COLOR'))
+    if color_disabled:
+        green = yellow = reset = ''
+    if level == 'READY':
+        print(f"{green}=== Environment Readiness: READY ==={reset}")
+        print("Config + .env detected; all core variables set (no placeholders).")
+    else:
+        print(f"{yellow}=== Environment Readiness: INCOMPLETE ==={reset}")
+        missing = [k for k,v in r['vars'].items() if not v['present']]
+        placeholders = [k for k,v in r['vars'].items() if v['placeholder']]
+        if not r['config']:
+            print(" - config.json missing (run init)")
+        if not r['env_file']:
+            print(" - .env missing (run doctor --edit-env or init)")
+        if missing:
+            print(" - Missing: " + ", ".join(missing))
+        if placeholders:
+            print(" - Placeholders: " + ", ".join(placeholders) + " (edit via doctor --edit-env)")
+        print("Use Doctor submenu → 'Enter / update environment variables' to fix.")
+    # Compact variable summary line
+    compact = []
+    for k in ('AZURE_DEVOPS_PAT','GITHUB_TOKEN','AZURE_DEVOPS_ORGANIZATION','GITHUB_ORGANIZATION'):
+        v = r['vars'][k]
+        state = 'OK' if v['present'] and not v['placeholder'] else ('PH' if v['placeholder'] else 'MISSING')
+        compact.append(f"{k.split('_')[-1]}={state}")
+    print("Status: " + ' '.join(compact))
+
+
 def interactive_menu():
     """Show interactive CLI menu with keyboard navigation (questionary)."""
     if not questionary:
         print("Optional dependency 'questionary' not installed. Install with: pip install questionary")
         return 1
-    # Logical ordering: prepare & validate first, then analysis, planning, migration, support
-    # 1. Update env, 2. Doctor, 3. Init, 4. Analyze, 5. Batch, 6. Migrate, 7. Quit
     color_disabled = bool(os.environ.get('NO_COLOR'))
     no_icons = bool(os.environ.get('MIGRATION_CLI_NO_ICONS'))
-
-    # ANSI color support (questionary does not parse custom [color] tags in titles)
-    # Colors disabled inside menu because questionary does not reliably render ANSI in choices across all environments.
-    # We retain a legend (printed once) if colors are not disabled, purely informational.
-    def style(txt: str, _color: str) -> str:  # stylistic no-op now
-        return txt
-
-    ico = (lambda sym: sym if (not no_icons) else '')
-
-    # Using explicit Choice objects allows future metadata
-    choices = [
-        questionary.Choice(title=f"{ico('🔐 ')}Update / load .env", value='update'),
-    # Single doctor entry opens a submenu of diagnostic modes
-    questionary.Choice(title=f"{ico('🩺 ')}Doctor diagnostics", value='doctor_menu'),
-        questionary.Choice(title=f"{ico('🛠  ')}Init configuration files", value='init'),
-        questionary.Choice(title=f"{ico('🔎 ')}Analyze organization", value='analyze'),
-        questionary.Choice(title=f"{ico('📦 ')}Batch migrate", value='batch'),
-        questionary.Choice(title=f"{ico('🚚 ')}Migrate repository", value='migrate'),
-        questionary.Choice(title=f"{ico('❌ ')}Quit", value='quit'),
-    ]
-
-    help_footer = (
-        "Use arrow keys • Enter to run • ESC/Ctrl+C to abort | Set NO_COLOR=1 to disable colors, "
-        "MIGRATION_CLI_NO_ICONS=1 to hide emojis"
-    )
-
     if not color_disabled:
         print("(Interactive Menu) — Icons indicate action category. Set MIGRATION_CLI_NO_ICONS=1 to disable icons.")
+    _print_readiness_banner()
+
+    # Build menu choices (value, title) then convert to questionary Choice objects
+    top_level = compute_menu_choices(no_icons)
+    q_choices = [questionary.Choice(title=title, value=val) for val, title in top_level]
 
     while True:
         selection = questionary.select(
-            "Choose an action:", choices=choices, instruction="",
+            "Choose an action:", choices=q_choices, instruction="",
             qmark="➡" if not no_icons else "?",
         ).ask()
-        if selection is None:  # user aborted (Ctrl+C)
+        if selection is None:
             print("Aborted.")
             return 1
-        key = selection  # value already mapped
+        key = selection
         if key == 'init':
             subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'init'])
         elif key == 'migrate':
@@ -164,16 +253,13 @@ def interactive_menu():
         elif key == 'batch':
             subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'batch'])
         elif key == 'doctor_menu':
-            # Submenu for doctor operations (replaces previous separate entries)
             sub = questionary.select(
                 "Doctor diagnostics:",
                 choices=[
-                    questionary.Choice(title="Run diagnostics", value='plain'),
-                    questionary.Choice(title="Diagnostics + append placeholders (--fix-env)", value='fix'),
-                    questionary.Choice(title="Diagnostics + interactive remediation (--assist)", value='assist'),
-                    questionary.Choice(title="Diagnostics + fix + remediation (--fix-env --assist)", value='fix_assist'),
-                    questionary.Choice(title="Edit & save .env (--edit-env)", value='edit_env'),
-                    questionary.Choice(title="Edit .env then remediation (--edit-env --assist)", value='edit_env_assist'),
+                    questionary.Choice(title="Run diagnostics (doctor)", value='plain'),
+                    questionary.Choice(title="Enter / update environment variables (--edit-env)", value='edit_env'),
+                    questionary.Choice(title="Append missing env placeholders (doctor --fix-env)", value='fix'),
+                    questionary.Choice(title="Remediation assistant (--assist)", value='assist'),
                     questionary.Choice(title="Back", value='back'),
                 ],
                 qmark='🩺' if not no_icons else '?'
@@ -184,16 +270,10 @@ def interactive_menu():
                 subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--fix-env'])
             elif sub == 'assist':
                 subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--assist'])
-            elif sub == 'fix_assist':
-                subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--fix-env', '--assist'])
             elif sub == 'edit_env':
                 subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--edit-env'])
-            elif sub == 'edit_env_assist':
-                subprocess.run([sys.executable, '-m', 'azuredevops_github_migration', 'doctor', '--edit-env', '--assist'])
             else:  # back or None
                 continue
-        elif key == 'update':
-            run_update_env()
         elif key == 'quit':
             print("Exiting interactive menu.")
             break

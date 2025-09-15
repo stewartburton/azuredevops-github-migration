@@ -14,13 +14,13 @@ def create_jira_config() -> Dict[str, Any]:
     """Create configuration optimized for Jira users."""
     return {
         "azure_devops": {
-            "organization": "your-organization-name",
+            "organization": "${AZURE_DEVOPS_ORGANIZATION}",
             "personal_access_token": "${AZURE_DEVOPS_PAT}",
             "project": "your-project-name"
         },
         "github": {
             "token": "${GITHUB_TOKEN}",
-            "organization": "your-github-org",
+            "organization": "${GITHUB_ORGANIZATION}",
             "create_private_repos": True
         },
         "migration": {
@@ -56,13 +56,13 @@ def create_full_config() -> Dict[str, Any]:
     """Create configuration for complete migration including work items."""
     return {
         "azure_devops": {
-            "organization": "your-organization-name",
+            "organization": "${AZURE_DEVOPS_ORGANIZATION}",
             "personal_access_token": "${AZURE_DEVOPS_PAT}",
             "project": "your-project-name"
         },
         "github": {
             "token": "${GITHUB_TOKEN}",
-            "organization": "your-github-org",
+            "organization": "${GITHUB_ORGANIZATION}",
             "create_private_repos": True
         },
         "migration": {

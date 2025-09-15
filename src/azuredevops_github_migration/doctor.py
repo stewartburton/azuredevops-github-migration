@@ -388,7 +388,8 @@ def _assist_loop(config: str, skip_network: bool = False):
             if added:
                 print(f"Added placeholders for: {', '.join(added)}")
             else:
-                print("No new placeholders added (all present).")
+                print("No new placeholders added – all canonical entries already present.")
+                print("Tip: run 'azuredevops-github-migration doctor --edit-env' (or choose edit mode from main doctor) to modify real values.")
         elif choice == '3':
             continue  # loop reruns diagnostics
         elif choice == '4':
