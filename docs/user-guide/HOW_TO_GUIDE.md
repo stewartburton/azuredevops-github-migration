@@ -1,43 +1,143 @@
-# How to Use the Azure DevOps to GitHub Migration Tool
+# How To Guide – Azure DevOps → GitHub Migration
 
-> **TL;DR (Jira Mode – code & pipelines only, no work items)**
-> ```bash
-> # 1. Use Jira-focused config (disables work items)
-> cp examples/jira-users-config.json config.json
->
-> # 2. Analyze (skips & omits work items; creates plan)
-> azuredevops-github-migration analyze --project "MyProject" --create-plan --config config.json --skip-work-items
->
-> # 3. Dry run a single repo
-> azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --dry-run --config config.json
->
-> # 4. Migrate the repo (issues auto-disabled)
-> azuredevops-github-migration migrate --project "MyProject" --repo "my-repo" --config config.json
->
-> # 5. Batch migrate (plan has no migrate_issues fields)
-> azuredevops-github-migration batch --plan migration_plan_<org>_*.json --config config.json
-> ```
-> `--skip-work-items` = no WIQL calls + no work item fields + later migrations treat repos as code-only.
+Concise, task‑oriented reference for planning and executing migrations. Deep internals: see `../technical/` documents.
 
-This comprehensive guide will walk you through the entire process of migrating your repositories and work items from Azure DevOps to GitHub.
+## Contents
+1. Quick Reference
+2. Prerequisites
+3. Install & Initialize
+4. Environment & Diagnostics
+5. Migration Workflow
+6. Scenarios
+7. Key Flags
+8. Verification & Post Steps
+9. Troubleshooting
+10. Pipeline Repoint (Summary)
+11. Recording Interactive Demo
 
-## Table of Contents
+---
 
-1. [Prerequisites](#prerequisites)
-2. [Installation](#installation)
-3. [Configuration](#configuration)
-4. [Authentication Setup](#authentication-setup)
-5. [Planning Your Migration](#planning-your-migration)
-6. [Running Migrations](#running-migrations)
-7. [Post-Migration Steps](#post-migration-steps)
-8. [Common Scenarios](#common-scenarios)
-9. [Key CLI Flags](#key-cli-flags-quick-reference)
-10. [Advanced Configuration](#advanced-configuration)
-11. [Validation and Testing](#validation-and-testing)
-12. [Best Practices](#best-practices)
-13. [Troubleshooting](#troubleshooting)
-14. [Example End-to-End Workflow](#example-end-to-end-workflow)
-15. [Configuring Azure DevOps Pipelines for GitHub](#configuring-azure-devops-pipelines-for-github)
+## 1. Quick Reference (Core Commands)
+| Action | Command |
+|--------|---------|
+| Init (full) | `azuredevops-github-migration init --template full` |
+| Init (Jira users) | `azuredevops-github-migration init --template jira-users` |
+| Analyze & plan | `azuredevops-github-migration analyze --create-plan` |
+| Dry run repo | `azuredevops-github-migration migrate --project P --repo R --dry-run` |
+| Migrate repo | `azuredevops-github-migration migrate --project P --repo R` |
+| Batch migrate | `azuredevops-github-migration batch --plan migration_plan_<org>_*.json` |
+| Diagnostics | `azuredevops-github-migration doctor` |
+| Fix env placeholders | `azuredevops-github-migration doctor --doctor-mode fix` |
+| Edit env | `azuredevops-github-migration doctor --doctor-mode edit` |
+| Assist submenu | `azuredevops-github-migration doctor --doctor-mode assist` |
+| Interactive menu | `azuredevops-github-migration interactive` |
+
+## 2. Prerequisites
+| Requirement | Notes |
+|-------------|-------|
+| Python ≥ 3.8 | 3.8–3.12 supported |
+| Git | In PATH |
+| Azure DevOps PAT | Code (Read), Project & Team (Read) minimum |
+| GitHub PAT | `repo` (add `admin:org` only if creating repos) |
+| Disk Space | Enough for largest repository clone |
+
+## 3. Install & Initialize
+```bash
+pip install azuredevops-github-migration
+azuredevops-github-migration init --template jira-users   # or full
+```
+`.env` example:
+```
+AZURE_DEVOPS_PAT=xxxx
+GITHUB_TOKEN=ghp_xxxx
+AZURE_DEVOPS_ORGANIZATION=your-ado-org
+GITHUB_ORGANIZATION=your-gh-org
+```
+Use `doctor --fix-env` to append missing canonical variables.
+
+## 4. Environment & Diagnostics
+| Command | Purpose |
+|---------|---------|
+| `interactive` | Arrow‑key launcher for common actions |
+| `update-env` | PowerShell loader (.env → process env) |
+| `doctor` | Diagnostics: env, Git, config, network |
+| `doctor --doctor-mode fix` | Append missing placeholders |
+| `doctor --doctor-mode edit` | Safe interactive .env editor |
+| `doctor --doctor-mode assist` | Remediation submenu |
+
+Examples:
+```bash
+azuredevops-github-migration doctor                # Plain diagnostics
+azuredevops-github-migration doctor --doctor-mode fix-assist
+azuredevops-github-migration doctor --doctor-mode edit
+```
+
+## 5. Migration Workflow
+| Phase | Goal | Command |
+|-------|------|---------|
+| Analyze | Inventory repos & pipelines | `analyze --create-plan` |
+| Review | Adjust generated plan | edit file |
+| Dry Run | Validate one repository | `migrate --dry-run` |
+| Execute | Perform real migration | `migrate` / `batch` |
+| Verify | Confirm integrity | `scripts/verify-migration.ps1` |
+| Archive | Lock source / read-only | manual |
+
+## 6. Scenarios
+| Scenario | Key Adjustments |
+|----------|-----------------|
+| Jira users | Use `jira-users` template; skip work items (`--skip-work-items` during analyze) |
+| Large org | Batch plan; prioritize critical repos first |
+| Pipelines only | Use `--no-issues --no-git` if only pipeline conversion needed |
+| Work items only | `--no-git --no-pipelines` + config enables work items |
+| Different GitHub org | Set target org in config (`github.organization`) |
+
+## 7. Key Flags
+| Flag | Purpose |
+|------|---------|
+| `--dry-run` | Simulate without side effects |
+| `--no-issues` | Suppress work item → issue migration |
+| `--skip-work-items` (analyze) | Exclude work item queries; plan omits issue fields |
+| `--pipelines-scope repository` | Limit pipeline conversion to repo-scoped ones |
+| `--exclude-disabled-pipelines` | Skip disabled pipelines |
+| `--verify-remote` | Branch parity check post-push |
+| `--doctor-mode <mode>` | Composite diagnostic shortcuts |
+
+## 8. Verification & Post Steps
+```powershell
+./scripts/verify-migration.ps1 -Org <org> -Repo <repo> -Json | ConvertFrom-Json
+```
+Check: branches, tags, workflows, issue counts (if migrated). Archive source repo (read-only) once validated.
+
+## 9. Troubleshooting (Quick)
+| Symptom | Action |
+|---------|--------|
+| Missing PAT / tokens | `doctor --doctor-mode fix` then fill placeholders |
+| Git not found | Install Git & ensure PATH |
+| Network unreachable | Check firewall / proxy; retry `doctor` |
+| Permission errors | Re-check PAT scopes; narrow to minimum needed |
+| Issues skipped unexpectedly | Ensure config `migrate_work_items` not false and `--no-issues` not set |
+
+## 10. Pipeline Repoint (Summary)
+| Step | Action |
+|------|--------|
+| 1 | Create GitHub service connection |
+| 2 | Update YAML/Classic pipeline repo source |
+| 3 | Adjust variable groups & secrets |
+| 4 | Validate triggers & branch filters |
+| 5 | Test pipeline with validation run |
+| 6 | Phase rollouts (dev → staging → prod) |
+| 7 | Monitor & clean up legacy links |
+
+## 11. Recording Interactive Demo
+```bash
+asciinema rec -c "azuredevops-github-migration interactive" interactive.cast
+asciinema upload interactive.cast
+```
+Update README badge with returned cast URL.
+
+---
+
+End of concise guide. For advanced configuration, mapping, and pipeline governance see the technical docs.
 
 ## Prerequisites
 
@@ -66,23 +166,23 @@ azuredevops-github-migration init --template jira-users    # For Jira users (mos
 azuredevops-github-migration init --template full          # Complete migration setup
 
 # Edit the created config.json and .env files with your settings
+```
 
-### (New) Optional Interactive Menu & Environment Loader
+#### (New) Optional Interactive Menu & Environment Loader
 
 After installation you can use two convenience commands to simplify onboarding:
 
 | Command | Purpose | Notes |
 |---------|---------|-------|
-| `azuredevops-github-migration interactive` | Arrow-key menu for common actions (init, analyze, migrate, batch, doctor, env update) | Requires optional dependency `questionary` (`pip install questionary`) |
-| `azuredevops-github-migration update-env` | Invokes PowerShell helper to load & audit environment variables from `.env` | Requires `pwsh` or `powershell` in PATH |
+| `azuredevops-github-migration interactive` | Arrow-key menu for common actions (init, analyze, migrate, batch, doctor, env update) | Optional dependency `questionary` (`pip install questionary`) |
+| `azuredevops-github-migration update-env` | PowerShell helper to load & audit environment variables from `.env` | Requires `pwsh` or `powershell` in PATH |
 
 Benefits:
-* Eliminates need to remember commands immediately
-* Ensures environment variables are loaded before running analysis/migration
-* Provides a quick, masked audit of token presence
+* No need to memorize commands early
+* Ensures env variables are loaded before analyze/migrate
+* Quick masked audit of token presence
 
-If PowerShell is not installed the `update-env` command will print guidance and exit; the rest of the interactive menu continues to function (except that option).
-```
+If PowerShell is not installed the `update-env` command prints guidance and exits; the rest of the interactive menu still works (except that option).
 
 ### Option 2: Automated Setup from Source
 
@@ -175,10 +275,16 @@ This executes the bundled PowerShell script (`scripts/Test-MigrationEnv.ps1 -Loa
 
 Within the interactive menu you can select "Update / load .env" to perform the same action using arrow keys.
 
-If you prefer a pure Python diagnostic, use:
+If you prefer a pure Python diagnostic (or a composite shortcut), use:
 
 ```bash
-azuredevops-github-migration doctor
+azuredevops-github-migration doctor                # Plain diagnostics
+# Composite shortcut forms:
+azuredevops-github-migration doctor --doctor-mode fix          # == --fix-env
+azuredevops-github-migration doctor --doctor-mode assist       # == --assist
+azuredevops-github-migration doctor --doctor-mode fix-assist   # == --fix-env --assist
+azuredevops-github-migration doctor --doctor-mode edit         # == --edit-env
+azuredevops-github-migration doctor --doctor-mode edit-assist  # == --edit-env --assist
 ```
 
 The `doctor` command auto-loads `.env` (without overwriting existing shell values) to report token presence.
@@ -193,7 +299,7 @@ azuredevops-github-migration doctor --fix-env --json
 ```
 `--fix-env` only appends missing canonical lines; it never removes or edits existing entries, nor does it write back actual secret values you typed in a session.
 
-#### (New) Interactive Remediation Submenu
+#### (New) Interactive Remediation Submenu (also via `--doctor-mode assist` / `--doctor-mode fix-assist`)
 
 If you want guided remediation (run loader, append placeholders, re-check):
 
@@ -209,7 +315,7 @@ Menu options:
 
 Placeholder detection: Any value that still begins with the template prefixes (e.g. `your_azure_devops_personal_access_token`) is treated as a placeholder and shown in the submenu so you can quickly identify incomplete setup.
 
-#### (New) Safe Interactive Editing of `.env`
+#### (New) Safe Interactive Editing of `.env` (also via `--doctor-mode edit` / `--doctor-mode edit-assist`)
 
 You can now persist edits to the four canonical variables without manually opening a text editor:
 
@@ -224,7 +330,7 @@ Features:
 * Appends any missing canonical keys if they were absent (e.g., only an alias existed).
 * Automatically reloads the updated `.env` and re-runs diagnostics inside the same invocation.
 
-Combine with placeholder append first if your file is very old:
+Combine with placeholder append first if your file is very old (or just use `--doctor-mode edit-assist`):
 ```
 azuredevops-github-migration doctor --fix-env --edit-env
 ```
