@@ -220,6 +220,38 @@ Doctor submenu (current interactive layout):
 
 The separate env loader entry was removed; environment editing is now done via the safe editor and remediation assistant.
 
+### Analyze Scope Selector (Enhanced)
+
+Selecting "🔎 Analyze organization" now presents a scope choice:
+
+1. Single project (faster) – prompts with the same paginated fuzzy-search project picker used by the Quickstart wizard.
+2. Full organization – walks all projects & repositories (slower, broader permissions may be needed).
+
+The project picker features:
+| Capability | Description |
+|------------|-------------|
+| Pagination | 10 projects per page with Prev / Next navigation |
+| Substring & fuzzy search | Type any substring OR non-contiguous sequence (e.g. `aps` matches `Anthony_Project_Sandbox`) |
+| Jump to letter | Quickly jump to first project starting with a letter |
+| Clear filter | Reset active filter and return to unfiltered list |
+| Cancel | Return to main menu without running analysis |
+
+If only one project exists, it's auto-selected. The analyze command is invoked with `--project <Name> --create-plan` to produce a scoped plan quickly. This mirrors the Quickstart guidance (encouraging a small-scope first pass before full org analysis).
+
+### Migrate Wizard (Enhanced)
+
+Selecting "🚚 Migrate repository" now launches an inline wizard that avoids the previous error requiring `--project` and `--repo` flags:
+
+1. Project picker (same enhanced UX as above)
+2. Repository picker (within selected project; pagination + fuzzy + jump-to-letter)
+3. Mode selection: Dry run vs Real migration
+4. Optional custom GitHub repository name (leave blank to reuse source repo name)
+5. Executes `migrate` with the assembled arguments (e.g. `--project <P> --repo <R> --dry-run`)
+
+Cancelling at any step safely returns to the main menu without side effects.
+
+Underlying selection logic is implemented in a reusable internal helper (`_paginated_picker`) shared by analyze and migrate flows for consistent UX.
+
 ### Readiness Banner
 
 When you launch the interactive menu a one-line readiness banner summarizes environment state:
