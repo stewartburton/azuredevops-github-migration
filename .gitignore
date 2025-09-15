@@ -32,6 +32,8 @@ venv.bak/
 
 # Environment configuration (secrets/local)
 .env
+.env.bak.*
+config.json.bak.*
 
 # IDE
 .vscode/
