@@ -330,9 +330,24 @@ class GitHubClient:
     
     def create_repository(self, name: str, description: str = "", private: bool = True, **kwargs) -> Dict[str, Any]:
         """Create a new repository with enhanced settings."""
-        # Validate repository name
+        # Auto-normalize basic whitespace -> underscore BEFORE validation (defensive; upstream should already do this)
+        original_name = name
+        if any(c.isspace() for c in name):
+            name = re.sub(r"\s+", "_", name.strip())
+            if original_name != name:
+                self.logger.warning(f"Repository name contained whitespace. Auto-normalized '{original_name}' -> '{name}'")
+
+        # Validate repository name (after normalization)
         if not self._validate_repo_name(name):
-            raise ValueError(f"Invalid repository name: '{name}'. Must follow GitHub naming rules.")
+            suggestion = self.suggest_repository_name(original_name)
+            guidance = (
+                "GitHub allows only alphanumeric characters, hyphens (-), underscores (_), and periods (.). "
+                "The name must not start or end with a period and be <= 100 chars."
+            )
+            msg = f"Invalid repository name: '{original_name}'. {guidance}"
+            if suggestion and suggestion != original_name:
+                msg += f" Suggested normalized form: '{suggestion}' (specify via --github-repo '{suggestion}')."
+            raise ValueError(msg)
         data = {
             'name': name,
             'description': description,
@@ -385,7 +400,38 @@ class GitHubClient:
         if not name or len(name) > 100:
             return False
         # GitHub repo name rules: alphanumeric, hyphens, underscores, periods
+        # Disallow leading/trailing period explicitly
+        if name.startswith('.') or name.endswith('.'):
+            return False
         return re.match(r'^[a-zA-Z0-9._-]+$', name) is not None
+
+    def suggest_repository_name(self, raw: str) -> str:
+        """Provide a conservative normalization suggestion for an invalid repo name.
+
+        Strategy:
+        1. Trim
+        2. Replace whitespace runs with underscore
+        3. Remove characters outside [A-Za-z0-9._-]
+        4. Collapse multiple separators (--- or ___) into single '-'
+        5. Strip leading/trailing separators / periods
+        6. Fallback to 'repo' if empty
+        """
+        if not raw:
+            return 'repo'
+        candidate = raw.strip()
+        # Whitespace -> underscore first (explicit user request)
+        candidate = re.sub(r'\s+', '_', candidate)
+        # Remove disallowed chars except the allowed set
+        candidate = re.sub(r'[^A-Za-z0-9._-]', '-', candidate)
+        # Collapse consecutive separators (treat underscore & hyphen & period groups conservatively)
+        candidate = re.sub(r'[-]{2,}', '-', candidate)
+        candidate = re.sub(r'[_]{2,}', '_', candidate)
+        # Remove leading/trailing periods/hyphens/underscores
+        candidate = candidate.strip('._-')
+        if not candidate:
+            candidate = 'repo'
+        # Truncate to 100 if needed
+        return candidate[:100]
     
     def get_rate_limit(self) -> Dict[str, Any]:
         """Get current rate limit status."""
@@ -696,6 +742,14 @@ class PipelineConverter:
     
     def __init__(self, logger: logging.Logger):
         self.logger = logger
+        self._naming_config = {}
+        # track seen workflow stems for collision handling per conversion session
+        self._seen_stems = set()
+        try:
+            from . import naming as _naming
+            self._naming_module = _naming
+        except Exception:
+            self._naming_module = None
     
     def convert_pipelines_to_actions(self, pipelines: List[Dict[str, Any]], 
                                    output_dir: str, dry_run: bool = False) -> List[str]:
@@ -716,8 +770,25 @@ class PipelineConverter:
         
         for i, pipeline in enumerate(pipelines):
             try:
-                workflow_name = self._sanitize_filename(pipeline.get('name', f'workflow-{i}'))
-                workflow_file = f"{workflow_name}.yml"
+                raw_name = pipeline.get('name', f'workflow-{i}')
+                if dry_run:
+                    workflow_stem = f"workflow-{i}"
+                elif self._naming_module:
+                    before = raw_name
+                    workflow_stem = self._naming_module.normalize_workflow_stem(before, self._seen_stems, self._naming_config)
+                    if workflow_stem != before:
+                        # Determine if this is a collision-originated change (numeric suffix present & base appears earlier)
+                        collision = False
+                        base_candidate = workflow_stem.rsplit('-', 1)[0] if '-' in workflow_stem else None
+                        if base_candidate and any(s == base_candidate for s in self._seen_stems):
+                            collision = True
+                        if collision:
+                            self.logger.info(f"Name collision: '{before}' normalized base already used, assigned '{workflow_stem}.yml'")
+                        else:
+                            self.logger.debug(f"Normalized pipeline name '{before}' -> '{workflow_stem}.yml'")
+                else:
+                    workflow_stem = self._sanitize_filename(raw_name)
+                workflow_file = f"{workflow_stem}.yml"
                 workflow_path = os.path.join(output_dir, workflow_file)
                 
                 workflow_content = self._convert_pipeline_to_workflow(pipeline)
@@ -964,6 +1035,12 @@ class MigrationOrchestrator:
             self.logger.info(f"{'[DRY RUN] ' if dry_run else ''}Starting migration of repository '{repo_name}' from project '{project_name}'")
             
             github_repo_name = github_repo_name or repo_name
+            # Early normalization: whitespace -> underscore to avoid validation failure later
+            if any(c.isspace() for c in github_repo_name):
+                normalized = re.sub(r"\s+", "_", github_repo_name.strip())
+                if normalized != github_repo_name:
+                    self.logger.info(f"Auto-normalized target GitHub repository name '{github_repo_name}' -> '{normalized}' (whitespace to underscore)")
+                    github_repo_name = normalized
             
             # Step 1: Validate repository size and prerequisites
             self._update_migration_state("Validating prerequisites")
