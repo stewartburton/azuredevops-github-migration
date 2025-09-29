@@ -156,7 +156,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 def retry_on_failure(
     func: F, max_retries: int = 3, delay: float = 1.0, backoff_factor: float = 2.0
-) -> F:
+) -> Callable[..., Any]:
     """Decorator for retrying API calls on failure.
 
     Returns the wrapped function preserving its type signature.
