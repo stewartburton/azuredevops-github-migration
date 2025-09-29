@@ -29,6 +29,8 @@ def test_interactive_analyze_single_project(monkeypatch, capsys, tmp_path):
     monkeypatch.chdir(tmp_path)
     # minimal config
     (tmp_path / "config.json").write_text("{}")
+    # Ensure new non-interactive fallback prefers Gamma explicitly
+    monkeypatch.setenv("MIGRATION_PREFERRED_PROJECT", "Gamma")
 
     # Patch analyzer
     fake_analyze = types.SimpleNamespace(AzureDevOpsAnalyzer=DummyAnalyzer)

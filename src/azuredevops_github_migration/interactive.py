@@ -456,9 +456,14 @@ def interactive_menu() -> int:
                                 "Select a project", names, allow_cancel=True
                             )
                         except Exception:
-                            # Test harness / non-interactive fallback: prefer a project named 'Gamma' if present
-                            gamma = [n for n in names if n.lower() == "gamma"]
-                            selected = gamma[0] if gamma else names[0]
+                            # Non-interactive fallback: pick first sorted project, optionally
+                            # filtered by MIGRATION_PREFERRED_PROJECT (case-insensitive).
+                            preferred = os.environ.get("MIGRATION_PREFERRED_PROJECT")
+                            if preferred:
+                                cand = [n for n in names if n.lower() == preferred.lower()]
+                                selected = cand[0] if cand else names[0]
+                            else:
+                                selected = names[0]
                     if not selected:
                         continue
                     subprocess.run(
