@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SRC_PATH = PROJECT_ROOT / 'src'
+SRC_PATH = PROJECT_ROOT / "src"
 
 
 def test_dotenv_loading(tmp_path, monkeypatch):
@@ -23,13 +23,13 @@ def test_dotenv_loading(tmp_path, monkeypatch):
 
     # Run the CLI version command in that directory
     env = os.environ.copy()
-    existing = env.get('PYTHONPATH','')
+    existing = env.get("PYTHONPATH", "")
     new_path = str(SRC_PATH)
     if existing:
         if new_path not in existing.split(os.pathsep):
-            env['PYTHONPATH'] = new_path + os.pathsep + existing
+            env["PYTHONPATH"] = new_path + os.pathsep + existing
     else:
-        env['PYTHONPATH'] = new_path
+        env["PYTHONPATH"] = new_path
     result = subprocess.run(
         [sys.executable, "-m", "azuredevops_github_migration.cli", "--version"],
         cwd=env_dir,
@@ -48,11 +48,13 @@ def test_dotenv_loading(tmp_path, monkeypatch):
 
     # Re-import module (force reload) to trigger _load_env_file
     import importlib
+
     cli_module = importlib.import_module("azuredevops_github_migration.cli")
 
     # Force call the internal loader (idempotent) and then check
     if hasattr(cli_module, "_load_env_file"):
         cli_module._load_env_file()  # type: ignore
 
-    assert os.environ.get("TEST_DOTENV_INJECT") == "1", \
-        "Expected TEST_DOTENV_INJECT to be loaded from .env"
+    assert (
+        os.environ.get("TEST_DOTENV_INJECT") == "1"
+    ), "Expected TEST_DOTENV_INJECT to be loaded from .env"
