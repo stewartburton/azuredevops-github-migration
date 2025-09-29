@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Quickstart workflow helper.
 
 Performs a guided onboarding sequence:
@@ -17,12 +19,12 @@ import json
 import os
 import sys
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 try:
-    import questionary  # type: ignore
+    import questionary
 except Exception:  # pragma: no cover
-    questionary = None
+    questionary = None  # type: ignore[assignment]
 
 
 def _print(msg):
@@ -260,9 +262,7 @@ def main(argv=None):
                                         if not use_icons:
                                             return value
                                         try:
-                                            from questionary import (
-                                                Choice,  # type: ignore
-                                            )
+                                            from questionary import Choice
 
                                             return Choice(
                                                 title=f"{icon} {value}", value=value
@@ -303,9 +303,9 @@ def main(argv=None):
                                 max_pages = (total + page_size - 1) // page_size
                                 if page >= max_pages:
                                     page = max_pages - 1 if max_pages > 0 else 0
-                                start = page * page_size
-                                end = min(start + page_size, total)
-                                slice_choices = filtered[start:end]
+                                start_idx = page * page_size
+                                end_idx = min(start_idx + page_size, total)
+                                slice_choices = filtered[start_idx:end_idx]
                                 use_icons = os.getenv(
                                     "MIGRATION_NO_NAV_ICONS", ""
                                 ).lower() not in ("1", "true", "yes")
@@ -314,7 +314,7 @@ def main(argv=None):
                                     if not use_icons:
                                         return value
                                     try:
-                                        from questionary import Choice  # type: ignore
+                                        from questionary import Choice
 
                                         return Choice(
                                             title=f"{icon} {value}", value=value
@@ -322,10 +322,10 @@ def main(argv=None):
                                     except Exception:  # pragma: no cover
                                         return value
 
-                                nav_choices = []  # type: ignore[var-annotated]
+                                nav_choices: list[str] = []
                                 if page > 0:
                                     nav_choices.append(_nav("◀ Prev page", "⬅️"))
-                                if end < total:
+                                if end_idx < total:
                                     nav_choices.append(_nav("Next page ▶", "➡️"))
                                 nav_choices.append(_nav("Search / filter", "🔍"))
                                 if filter_text:
@@ -348,7 +348,7 @@ def main(argv=None):
                                     page = max(page - 1, 0)
                                     continue
                                 if ans == "Next page ▶":
-                                    if end < total:
+                                    if end_idx < total:
                                         page += 1
                                     continue
                                 if ans == "Search / filter":
@@ -395,7 +395,7 @@ def main(argv=None):
                             _print(f"Project selection skipped (UI error: {qe})")
                 else:
                     if (
-                        questionary is None
+                        (questionary is None or not hasattr(questionary, "select"))
                         and not args.non_interactive
                         and not args.no_project_select
                     ):

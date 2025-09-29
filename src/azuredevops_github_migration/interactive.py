@@ -1,17 +1,17 @@
-"""
-Interactive CLI enhancements for Azure DevOps to GitHub Migration Tool
-"""
+from __future__ import annotations
+
+"""Interactive CLI enhancements for Azure DevOps to GitHub Migration Tool with stronger typing."""
 
 import os
 import shutil
 import subprocess
 import sys
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 try:  # Optional dependency
-    import questionary  # type: ignore
+    import questionary
 except Exception:  # pragma: no cover - optional
-    questionary = None
+    questionary = None  # type: ignore[assignment]
 
 
 def _find_powershell() -> List[str]:
@@ -129,7 +129,7 @@ def _simple_env_load(path: str):
         print(f"[WARN] Could not load env file into current process: {e}")
 
 
-def compute_menu_choices(no_icons: bool) -> Sequence[tuple[str, str]]:
+def compute_menu_choices(no_icons: bool) -> Sequence[Tuple[str, str]]:
     """Return sequence of (value, title_without_qmark) for top-level menu (testable).
 
     Excludes the env update action as a top-level item (now nested under doctor submenu).
@@ -164,7 +164,7 @@ PLACEHOLDER_PREFIXES = (
 )
 
 
-def _mask(val: str | None) -> str:
+def _mask(val: Optional[str]) -> str:
     if not val:
         return ""
     if len(val) <= 4:
@@ -172,7 +172,7 @@ def _mask(val: str | None) -> str:
     return val[:4] + "****"
 
 
-def _gather_readiness() -> Dict[str, any]:
+def _gather_readiness() -> Dict[str, Any]:
     cfg_exists = os.path.exists("config.json")
     env_exists = os.path.exists(".env")
     # Core vars
@@ -189,7 +189,7 @@ def _gather_readiness() -> Dict[str, any]:
         raw = os.environ.get(k)
         present = bool(raw)
         placeholder = False
-        if present:
+        if raw:
             low = raw.lower()
             for p in PLACEHOLDER_PREFIXES:
                 if low.startswith(p):
@@ -222,7 +222,7 @@ def _print_readiness_banner():
     if os.environ.get("MIGRATION_NO_BANNER") == "1":
         return
     r = _gather_readiness()
-    level = r["level"]
+    level = r.get("level", "INCOMPLETE")
     # Simple color codes (can be disabled by NO_COLOR from earlier logic)
     green = "\033[92m"
     yellow = "\033[93m"
@@ -258,7 +258,8 @@ def _print_readiness_banner():
         "AZURE_DEVOPS_ORGANIZATION",
         "GITHUB_ORGANIZATION",
     ):
-        v = r["vars"][k]
+        var_map = r.get("vars", {})
+        v = var_map.get(k, {"present": False, "placeholder": False})
         state = (
             "OK"
             if v["present"] and not v["placeholder"]
@@ -268,7 +269,7 @@ def _print_readiness_banner():
     print("Status: " + " ".join(compact))
 
 
-def interactive_menu():
+def interactive_menu() -> int:
     """Show interactive CLI menu with keyboard navigation (questionary)."""
     if not questionary:
         print(
@@ -596,8 +597,7 @@ def _paginated_picker(
         if not use_icons:
             return value
         try:
-            from questionary import Choice  # type: ignore
-
+            from questionary import Choice
             return Choice(title=f"{icon} {value}", value=value)
         except Exception:  # pragma: no cover
             return value

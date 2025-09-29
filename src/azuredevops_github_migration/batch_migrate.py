@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
-"""
-Batch migration script for migrating multiple repositories from Azure DevOps to GitHub.
-"""
+from __future__ import annotations
+"""Batch migration script for migrating multiple repositories from Azure DevOps to GitHub."""
 
 import json
 import logging
 from typing import Any, Dict, List
 
-try:
-    from .migrate import MigrationOrchestrator
-    from .utils import log_migration_summary
-except ImportError:
-    from migrate import MigrationOrchestrator
-    from utils import log_migration_summary
+from .migrate import MigrationOrchestrator
+from .utils import log_migration_summary
 
 
 def load_migration_plan(file_path: str) -> List[Dict[str, Any]]:
     """Load migration plan from JSON file."""
-    with open(file_path, "r") as f:
-        return json.load(f)
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    # Ensure list of dict shape
+    if not isinstance(data, list):  # pragma: no cover - defensive
+        raise ValueError("Migration plan must be a list of objects")
+    return [d for d in data if isinstance(d, dict)]
 
 
 def create_sample_migration_plan():

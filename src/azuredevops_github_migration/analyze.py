@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""
-Analysis tool for Azure DevOps organizations to help plan migrations.
-"""
+from __future__ import annotations
+"""Analysis tool for Azure DevOps organizations to help plan migrations (typed)."""
 
 import csv
 import json
@@ -9,10 +8,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List
 
-try:
-    from .migrate import AzureDevOpsClient
-except ImportError:
-    from migrate import AzureDevOpsClient
+from .migrate import AzureDevOpsClient
 
 import yaml
 
@@ -177,8 +173,8 @@ class AzureDevOpsAnalyzer:
                 )
 
         # Work item aggregation
-        work_item_types = {}
-        work_item_states = {}
+        work_item_types: Dict[str, int] = {}
+        work_item_states: Dict[str, int] = {}
         for item in work_items:
             fields = item.get("fields", {})
             item_type = fields.get("System.WorkItemType", "Unknown")

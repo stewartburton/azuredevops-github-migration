@@ -1,13 +1,13 @@
-"""
-Utility functions for the Azure DevOps to GitHub migration tool.
-"""
+from __future__ import annotations
+
+"""Utility functions for the Azure DevOps to GitHub migration tool with improved typing."""
 
 import logging
 import os
 import re
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union, cast
 
 import html2text
 import markdown
@@ -113,8 +113,8 @@ def format_work_item_body(work_item: Dict[str, Any]) -> str:
 
 def generate_labels_for_work_item(
     work_item: Dict[str, Any],
-    work_item_mapping: Dict[str, str] = None,
-    state_mapping: Dict[str, str] = None,
+    work_item_mapping: Optional[Dict[str, str]] = None,
+    state_mapping: Optional[Dict[str, str]] = None,
 ) -> List[str]:
     """Generate GitHub labels for a work item."""
     fields = work_item.get("fields", {})
@@ -151,30 +151,35 @@ def generate_labels_for_work_item(
     return labels
 
 
+F = TypeVar("F", bound=Callable[..., Any])
+
+
 def retry_on_failure(
-    func, max_retries: int = 3, delay: float = 1.0, backoff_factor: float = 2.0
-):
-    """Decorator for retrying API calls on failure."""
+    func: F, max_retries: int = 3, delay: float = 1.0, backoff_factor: float = 2.0
+) -> F:
+    """Decorator for retrying API calls on failure.
 
-    def wrapper(*args, **kwargs):
-        last_exception = None
+    Returns the wrapped function preserving its type signature.
+    """
 
+    def wrapper(*args: Any, **kwargs: Any):  # type: ignore[override]
+        last_exception: Optional[Exception] = None
         for attempt in range(max_retries + 1):
             try:
                 return func(*args, **kwargs)
-            except Exception as e:
+            except Exception as e:  # pragma: no cover - retry logic
                 last_exception = e
                 if attempt < max_retries:
                     wait_time = delay * (backoff_factor**attempt)
                     logging.warning(
-                        f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time:.1f}s..."
+                        f"Attempt {attempt + 1} failed: {e}. Retrying in {wait_time:.1f}s..."
                     )
                     time.sleep(wait_time)
                 else:
                     logging.error(f"All {max_retries + 1} attempts failed")
                     raise last_exception
 
-    return wrapper
+    return cast(F, wrapper)
 
 
 def validate_config(config: Dict[str, Any]) -> List[str]:
@@ -206,20 +211,19 @@ def validate_config(config: Dict[str, Any]) -> List[str]:
 
 
 def load_environment_variables(config: Dict[str, Any]) -> Dict[str, Any]:
-    """Load environment variables and substitute them in config."""
+    """Load environment variables and substitute them in config mapping ${VAR}."""
 
-    def substitute_env_vars(value):
+    def substitute_env_vars(value: Any) -> Any:
         if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-            env_var = value[2:-1]  # Remove ${ and }
-            return os.getenv(env_var, value)  # Return original if env var not found
-        elif isinstance(value, dict):
+            env_var = value[2:-1]
+            return os.getenv(env_var, value)
+        if isinstance(value, dict):
             return {k: substitute_env_vars(v) for k, v in value.items()}
-        elif isinstance(value, list):
+        if isinstance(value, list):
             return [substitute_env_vars(item) for item in value]
-        else:
-            return value
+        return value
 
-    return substitute_env_vars(config)
+    return cast(Dict[str, Any], substitute_env_vars(config))
 
 
 def create_progress_bar(current: int, total: int, width: int = 50) -> str:
