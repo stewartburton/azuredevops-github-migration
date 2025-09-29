@@ -144,6 +144,45 @@ azuredevops-github-migration doctor --doctor-mode edit
 | `--verify-remote` | Branch parity check post-push |
 | `--doctor-mode <mode>` | Composite diagnostic shortcuts |
 
+Automatic repository name normalization: If your Azure DevOps repository name contains whitespace (e.g. `"My Repo"`), the migration automatically converts spaces to underscores (`My_Repo`) for the GitHub target unless you explicitly provide `--github-repo`. Other invalid characters still trigger a validation error with a suggested normalized name. This avoids common failures when source naming conventions allowed spaces.
+
+### Workflow Filename Normalization (Pipelines → GitHub Actions)
+Pipeline names are converted into workflow filenames using a deterministic normalization strategy:
+
+| Example Pipeline Name | Workflow Filename |
+|-----------------------|-------------------|
+| `Build & Test`        | `build-test.yml`  |
+| `CI/CD (Prod)`        | `ci-cd-prod.yml`  |
+| `Deploy` (duplicate)  | `deploy.yml`, `deploy-2.yml` |
+
+Rules:
+1. Trim whitespace.
+2. Collapse internal whitespace to a separator (`-` by default).
+3. Replace disallowed characters with the separator.
+4. Collapse repeated separators.
+5. Strip leading/trailing separators / periods.
+6. Lowercase (configurable).
+7. Enforce max length (default 50 chars for the stem; suffixes added for collisions).
+8. Collisions get numeric suffixes (`-2`, `-3`, ...).
+
+Configuration (optional) in `config.json`:
+```jsonc
+{
+  "naming": {
+    "workflow": {
+      "separator": "-",
+      "lowercase": true,
+      "max_length": 50
+    },
+    "repository": {
+      "whitespace_strategy": "underscore", // or "dash"
+      "force_lowercase": false
+    }
+  }
+}
+```
+If the section is omitted, defaults apply. Set `repository.whitespace_strategy` to `dash` if you prefer `my-repo` instead of `My_Repo` when spaces are encountered.
+
 ## 8. Verification & Post Steps
 ```powershell
 ./scripts/verify-migration.ps1 -Org <org> -Repo <repo> -Json | ConvertFrom-Json

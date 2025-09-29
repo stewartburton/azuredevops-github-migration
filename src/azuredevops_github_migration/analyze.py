@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""
-Analysis tool for Azure DevOps organizations to help plan migrations.
-"""
+from __future__ import annotations
+"""Analysis tool for Azure DevOps organizations to help plan migrations (typed)."""
 
-import json
 import csv
+import json
 import os
-from typing import Dict, List, Any
 from datetime import datetime
-try:
-    from .migrate import AzureDevOpsClient
-except ImportError:
-    from migrate import AzureDevOpsClient
+from typing import Any, Dict, List
+
+from .migrate import AzureDevOpsClient
+
 import yaml
 
 
@@ -24,17 +22,21 @@ class AzureDevOpsAnalyzer:
     - Graceful degradation if work item access fails (e.g. missing scope)
     """
 
-    def __init__(self, config_file: str = "config.json", skip_work_items: bool = False,
-                 omit_work_item_fields: bool = False):
+    def __init__(
+        self,
+        config_file: str = "config.json",
+        skip_work_items: bool = False,
+        omit_work_item_fields: bool = False,
+    ):
         self.config = self.load_config(config_file)
         self.skip_work_items = skip_work_items
         self.omit_work_item_fields = omit_work_item_fields
         self.client = AzureDevOpsClient(
-            self.config['azure_devops']['organization'],
-            self.config['azure_devops']['personal_access_token']
+            self.config["azure_devops"]["organization"],
+            self.config["azure_devops"]["personal_access_token"],
         )
         self._config_file = config_file
-    
+
     def load_config(self, config_file: str) -> Dict[str, Any]:
         """Load configuration from YAML or JSON file with ${ENV_VAR} substitution.
 
@@ -42,8 +44,8 @@ class AzureDevOpsAnalyzer:
         config.json with environment variable placeholders.
         """
         self._load_env_file()  # load .env first if present
-        with open(config_file, 'r', encoding='utf-8') as f:
-            if config_file.endswith('.json'):
+        with open(config_file, "r", encoding="utf-8") as f:
+            if config_file.endswith(".json"):
                 raw = json.load(f)
             else:
                 raw = yaml.safe_load(f)
@@ -53,66 +55,76 @@ class AzureDevOpsAnalyzer:
                 return {k: subst(v) for k, v in obj.items()}
             if isinstance(obj, list):
                 return [subst(i) for i in obj]
-            if isinstance(obj, str) and obj.startswith('${') and obj.endswith('}'):
+            if isinstance(obj, str) and obj.startswith("${") and obj.endswith("}"):
                 env_name = obj[2:-1]
-                return os.getenv(env_name, obj)  # leave original if missing so user sees placeholder
+                return os.getenv(
+                    env_name, obj
+                )  # leave original if missing so user sees placeholder
             return obj
 
         cfg = subst(raw)
         # Minimal validation for required keys used here
-        org_val = cfg.get('azure_devops', {}).get('organization')
+        org_val = cfg.get("azure_devops", {}).get("organization")
         if org_val in ("your-organization-name", "ORG_NAME_PLACEHOLDER", None, ""):
             # Attempt env override before failing
-            env_org = os.getenv('AZURE_DEVOPS_ORGANIZATION') or os.getenv('AZURE_DEVOPS_ORG')
+            env_org = os.getenv("AZURE_DEVOPS_ORGANIZATION") or os.getenv(
+                "AZURE_DEVOPS_ORG"
+            )
             if env_org:
-                cfg.setdefault('azure_devops', {})['organization'] = env_org
-                print(f"[WARN] Placeholder azure_devops.organization replaced with environment value '{env_org}'")
+                cfg.setdefault("azure_devops", {})["organization"] = env_org
+                print(
+                    f"[WARN] Placeholder azure_devops.organization replaced with environment value '{env_org}'"
+                )
             else:
-                raise ValueError("Azure DevOps organization not set (azure_devops.organization)")
-        if not cfg.get('azure_devops', {}).get('personal_access_token'):
-            raise ValueError("Azure DevOps personal access token not set (azure_devops.personal_access_token)")
+                raise ValueError(
+                    "Azure DevOps organization not set (azure_devops.organization)"
+                )
+        if not cfg.get("azure_devops", {}).get("personal_access_token"):
+            raise ValueError(
+                "Azure DevOps personal access token not set (azure_devops.personal_access_token)"
+            )
         return cfg
 
-    def _load_env_file(self, filename: str = '.env'):
+    def _load_env_file(self, filename: str = ".env"):
         """Simple .env loader (duplicates lightweight logic from migrate.py)."""
         try:
             if not os.path.exists(filename):
                 return
-            with open(filename, 'r', encoding='utf-8') as f:
+            with open(filename, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
-                    if not line or line.startswith('#') or '=' not in line:
+                    if not line or line.startswith("#") or "=" not in line:
                         continue
-                    k, v = line.split('=', 1)
+                    k, v = line.split("=", 1)
                     k = k.strip()
                     v = v.strip().strip('"').strip("'")
                     if k and k not in os.environ:
                         os.environ[k] = v
         except Exception as e:
             print(f"[WARN] Could not load .env file: {e}")
-    
+
     def analyze_organization(self) -> Dict[str, Any]:
         """Analyze the entire Azure DevOps organization."""
         print("🔍 Analyzing Azure DevOps organization...")
-        
+
         projects = self.client.get_projects()
         analysis = {
-            'organization': self.config['azure_devops']['organization'],
-            'analysis_date': datetime.now().isoformat(),
-            'total_projects': len(projects),
-            'projects': []
+            "organization": self.config["azure_devops"]["organization"],
+            "analysis_date": datetime.now().isoformat(),
+            "total_projects": len(projects),
+            "projects": [],
         }
-        
+
         for project in projects:
             print(f"  📁 Analyzing project: {project['name']}")
             project_analysis = self.analyze_project(project)
-            analysis['projects'].append(project_analysis)
-        
+            analysis["projects"].append(project_analysis)
+
         return analysis
-    
+
     def analyze_project(self, project: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze a specific project (robust against partial permission failures)."""
-        project_name = project['name']
+        project_name = project["name"]
 
         repositories = []
         work_items = []
@@ -124,9 +136,9 @@ class AzureDevOpsAnalyzer:
         except Exception as e:
             print(f"    ❌ Error listing repositories for project {project_name}: {e}")
             return {
-                'name': project_name,
-                'id': project['id'],
-                'error': f"repositories: {e}"
+                "name": project_name,
+                "id": project["id"],
+                "error": f"repositories: {e}",
             }
 
         # Work items (optional / resilient)
@@ -142,226 +154,250 @@ class AzureDevOpsAnalyzer:
 
         for repo in repositories:
             try:
-                pull_requests = self.client.get_pull_requests(project_name, repo['id'])
+                pull_requests = self.client.get_pull_requests(project_name, repo["id"])
                 total_pull_requests += len(pull_requests)
                 repo_info = {
-                    'name': repo['name'],
-                    'id': repo['id'],
-                    'url': repo.get('webUrl', ''),
-                    'size': repo.get('size', 0),
-                    'default_branch': repo.get('defaultBranch', 'main'),
-                    'pull_requests_count': len(pull_requests),
-                    'is_empty': repo.get('size', 0) == 0
+                    "name": repo["name"],
+                    "id": repo["id"],
+                    "url": repo.get("webUrl", ""),
+                    "size": repo.get("size", 0),
+                    "default_branch": repo.get("defaultBranch", "main"),
+                    "pull_requests_count": len(pull_requests),
+                    "is_empty": repo.get("size", 0) == 0,
                 }
                 repo_analysis.append(repo_info)
             except Exception as e:
                 print(f"    ⚠️  Could not analyze repository {repo['name']}: {e}")
-                repo_analysis.append({
-                    'name': repo['name'],
-                    'id': repo['id'],
-                    'error': str(e)
-                })
+                repo_analysis.append(
+                    {"name": repo["name"], "id": repo["id"], "error": str(e)}
+                )
 
         # Work item aggregation
-        work_item_types = {}
-        work_item_states = {}
+        work_item_types: Dict[str, int] = {}
+        work_item_states: Dict[str, int] = {}
         for item in work_items:
-            fields = item.get('fields', {})
-            item_type = fields.get('System.WorkItemType', 'Unknown')
-            item_state = fields.get('System.State', 'Unknown')
+            fields = item.get("fields", {})
+            item_type = fields.get("System.WorkItemType", "Unknown")
+            item_state = fields.get("System.State", "Unknown")
             work_item_types[item_type] = work_item_types.get(item_type, 0) + 1
             work_item_states[item_state] = work_item_states.get(item_state, 0) + 1
 
         result = {
-            'name': project_name,
-            'id': project['id'],
-            'description': project.get('description', ''),
-            'visibility': project.get('visibility', 'private'),
-            'state': project.get('state', 'wellFormed'),
-            'repositories_count': len(repositories),
-            'repositories': repo_analysis,
-            'work_items_count': len(work_items),
-            'work_item_types': work_item_types,
-            'work_item_states': work_item_states,
-            'total_pull_requests': total_pull_requests
+            "name": project_name,
+            "id": project["id"],
+            "description": project.get("description", ""),
+            "visibility": project.get("visibility", "private"),
+            "state": project.get("state", "wellFormed"),
+            "repositories_count": len(repositories),
+            "repositories": repo_analysis,
+            "work_items_count": len(work_items),
+            "work_item_types": work_item_types,
+            "work_item_states": work_item_states,
+            "total_pull_requests": total_pull_requests,
         }
         if work_items_error:
-            result['work_items_error'] = work_items_error
+            result["work_items_error"] = work_items_error
         if self.skip_work_items:
-            result['work_items_skipped'] = True
+            result["work_items_skipped"] = True
         return result
-    
-    def generate_migration_recommendations(self, analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
+
+    def generate_migration_recommendations(
+        self, analysis: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         """Generate migration recommendations based on analysis."""
         recommendations = []
-        
-        for project in analysis['projects']:
-            if 'error' in project:
+
+        for project in analysis["projects"]:
+            if "error" in project:
                 continue
-            
-            for repo in project.get('repositories', []):
-                if 'error' in repo:
+
+            for repo in project.get("repositories", []):
+                if "error" in repo:
                     continue
-                
+
                 recommendation = {
-                    'project_name': project['name'],
-                    'repo_name': repo['name'],
-                    'github_repo_name': repo['name'].lower().replace(' ', '-'),
-                    'priority': self.calculate_migration_priority(repo, project),
-                    'estimated_effort': self.estimate_migration_effort(repo, project),
-                    'notes': []
+                    "project_name": project["name"],
+                    "repo_name": repo["name"],
+                    "github_repo_name": repo["name"].lower().replace(" ", "-"),
+                    "priority": self.calculate_migration_priority(repo, project),
+                    "estimated_effort": self.estimate_migration_effort(repo, project),
+                    "notes": [],
                 }
                 if not self.omit_work_item_fields:
-                    recommendation['migrate_issues'] = False if self.skip_work_items else project.get('work_items_count', 0) > 0
-                
-                # Add notes based on analysis
-                if repo.get('is_empty'):
-                    recommendation['notes'].append("Repository is empty")
-                    recommendation['priority'] = 'low'
-                
-                if repo.get('pull_requests_count', 0) > 100:
-                    recommendation['notes'].append(f"High PR activity ({repo['pull_requests_count']} PRs)")
+                    recommendation["migrate_issues"] = (
+                        False
+                        if self.skip_work_items
+                        else project.get("work_items_count", 0) > 0
+                    )
 
-                if (not self.skip_work_items and not self.omit_work_item_fields and
-                        project.get('work_items_count', 0) > 500):
-                    recommendation['notes'].append(
-                        f"Large number of work items ({project['work_items_count']})")
-                    recommendation['estimated_effort'] = 'high'
+                # Add notes based on analysis
+                if repo.get("is_empty"):
+                    recommendation["notes"].append("Repository is empty")
+                    recommendation["priority"] = "low"
+
+                if repo.get("pull_requests_count", 0) > 100:
+                    recommendation["notes"].append(
+                        f"High PR activity ({repo['pull_requests_count']} PRs)"
+                    )
+
+                if (
+                    not self.skip_work_items
+                    and not self.omit_work_item_fields
+                    and project.get("work_items_count", 0) > 500
+                ):
+                    recommendation["notes"].append(
+                        f"Large number of work items ({project['work_items_count']})"
+                    )
+                    recommendation["estimated_effort"] = "high"
 
                 recommendations.append(recommendation)
-        
+
         # Sort by priority
-        priority_order = {'high': 3, 'medium': 2, 'low': 1}
-        recommendations.sort(key=lambda x: priority_order.get(x['priority'], 0), reverse=True)
-        
+        priority_order = {"high": 3, "medium": 2, "low": 1}
+        recommendations.sort(
+            key=lambda x: priority_order.get(x["priority"], 0), reverse=True
+        )
+
         return recommendations
-    
-    def calculate_migration_priority(self, repo: Dict[str, Any], project: Dict[str, Any]) -> str:
+
+    def calculate_migration_priority(
+        self, repo: Dict[str, Any], project: Dict[str, Any]
+    ) -> str:
         """Calculate migration priority for a repository."""
         score = 0
-        
+
         # Size factor
-        size = repo.get('size', 0)
+        size = repo.get("size", 0)
         if size > 1000000:  # Large repo
             score += 2
         elif size > 100000:  # Medium repo
             score += 1
-        
+
         # Activity factor
-        pr_count = repo.get('pull_requests_count', 0)
+        pr_count = repo.get("pull_requests_count", 0)
         if pr_count > 50:
             score += 2
         elif pr_count > 10:
             score += 1
-        
+
         # Work items factor
-        work_items_count = project.get('work_items_count', 0)
+        work_items_count = project.get("work_items_count", 0)
         if work_items_count > 100:
             score += 2
         elif work_items_count > 10:
             score += 1
-        
+
         # Empty repo penalty
-        if repo.get('is_empty'):
+        if repo.get("is_empty"):
             score -= 3
-        
+
         if score >= 4:
-            return 'high'
+            return "high"
         elif score >= 2:
-            return 'medium'
+            return "medium"
         else:
-            return 'low'
-    
-    def estimate_migration_effort(self, repo: Dict[str, Any], project: Dict[str, Any]) -> str:
+            return "low"
+
+    def estimate_migration_effort(
+        self, repo: Dict[str, Any], project: Dict[str, Any]
+    ) -> str:
         """Estimate migration effort."""
         effort_score = 0
-        
+
         # Repository complexity
-        if repo.get('pull_requests_count', 0) > 100:
+        if repo.get("pull_requests_count", 0) > 100:
             effort_score += 2
-        elif repo.get('pull_requests_count', 0) > 20:
+        elif repo.get("pull_requests_count", 0) > 20:
             effort_score += 1
-        
+
         # Work items complexity
-        work_items_count = project.get('work_items_count', 0)
+        work_items_count = project.get("work_items_count", 0)
         if work_items_count > 200:
             effort_score += 2
         elif work_items_count > 50:
             effort_score += 1
-        
+
         # Repository size
-        size = repo.get('size', 0)
+        size = repo.get("size", 0)
         if size > 5000000:  # Very large
             effort_score += 2
         elif size > 1000000:  # Large
             effort_score += 1
-        
+
         if effort_score >= 4:
-            return 'high'
+            return "high"
         elif effort_score >= 2:
-            return 'medium'
+            return "medium"
         else:
-            return 'low'
-    
-    def export_analysis_report(self, analysis: Dict[str, Any], format: str = 'json'):
+            return "low"
+
+    def export_analysis_report(self, analysis: Dict[str, Any], format: str = "json"):
         """Export analysis report in specified format."""
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        org_name = analysis['organization']
-        
-        if format.lower() == 'json':
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        org_name = analysis["organization"]
+
+        if format.lower() == "json":
             filename = f"analysis_report_{org_name}_{timestamp}.json"
-            with open(filename, 'w') as f:
+            with open(filename, "w") as f:
                 json.dump(analysis, f, indent=2, default=str)
-        
-        elif format.lower() == 'csv':
+
+        elif format.lower() == "csv":
             filename = f"analysis_report_{org_name}_{timestamp}.csv"
             self.export_csv_report(analysis, filename)
-        
+
         print(f"📊 Analysis report exported: {filename}")
         return filename
-    
+
     def export_csv_report(self, analysis: Dict[str, Any], filename: str):
         """Export analysis as CSV report."""
-        with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+        with open(filename, "w", newline="", encoding="utf-8") as csvfile:
             fieldnames = [
-                'project_name', 'repo_name', 'repo_size', 'pull_requests_count',
-                'work_items_count', 'is_empty', 'migration_priority', 'estimated_effort'
+                "project_name",
+                "repo_name",
+                "repo_size",
+                "pull_requests_count",
+                "work_items_count",
+                "is_empty",
+                "migration_priority",
+                "estimated_effort",
             ]
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
-            
-            for project in analysis['projects']:
-                if 'error' in project:
+
+            for project in analysis["projects"]:
+                if "error" in project:
                     continue
-                
-                for repo in project.get('repositories', []):
-                    if 'error' in repo:
+
+                for repo in project.get("repositories", []):
+                    if "error" in repo:
                         continue
-                    
+
                     priority = self.calculate_migration_priority(repo, project)
                     effort = self.estimate_migration_effort(repo, project)
-                    
-                    writer.writerow({
-                        'project_name': project['name'],
-                        'repo_name': repo['name'],
-                        'repo_size': repo.get('size', 0),
-                        'pull_requests_count': repo.get('pull_requests_count', 0),
-                        'work_items_count': project.get('work_items_count', 0),
-                        'is_empty': repo.get('is_empty', False),
-                        'migration_priority': priority,
-                        'estimated_effort': effort
-                    })
-    
+
+                    writer.writerow(
+                        {
+                            "project_name": project["name"],
+                            "repo_name": repo["name"],
+                            "repo_size": repo.get("size", 0),
+                            "pull_requests_count": repo.get("pull_requests_count", 0),
+                            "work_items_count": project.get("work_items_count", 0),
+                            "is_empty": repo.get("is_empty", False),
+                            "migration_priority": priority,
+                            "estimated_effort": effort,
+                        }
+                    )
+
     def create_migration_plan(self, analysis: Dict[str, Any]) -> str:
         """Create a migration plan JSON file based on analysis."""
         recommendations = self.generate_migration_recommendations(analysis)
-        
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"migration_plan_{analysis['organization']}_{timestamp}.json"
-        
-        with open(filename, 'w') as f:
+
+        with open(filename, "w") as f:
             json.dump(recommendations, f, indent=2)
-        
+
         print(f"📋 Migration plan created: {filename}")
         return filename
 
@@ -377,40 +413,62 @@ def main(argv=None):
     import argparse
     import json as _json
 
-    parser = argparse.ArgumentParser(description='Azure DevOps Organization Analyzer')
-    parser.add_argument('--config', default='config.json',
-                       help='Configuration file path')
-    parser.add_argument('--format', choices=['json', 'csv'], default='json',
-                       help='Export format for analysis report')
-    parser.add_argument('--create-plan', action='store_true',
-                       help='Create migration plan based on analysis')
-    parser.add_argument('--project', 
-                       help='Analyze specific project only')
-    parser.add_argument('--skip-work-items', action='store_true',
-                       help='Skip querying work items AND omit all work item related fields')
-    parser.add_argument('--list-projects', action='store_true',
-                        help='List Azure DevOps projects then exit')
-    parser.add_argument('--list-repos', metavar='PROJECT',
-                        help='List repositories in given project then exit')
-    parser.add_argument('--debug', action='store_true',
-                        help='Verbose logging and echo effective (sanitized) configuration')
+    parser = argparse.ArgumentParser(description="Azure DevOps Organization Analyzer")
+    parser.add_argument(
+        "--config", default="config.json", help="Configuration file path"
+    )
+    parser.add_argument(
+        "--format",
+        choices=["json", "csv"],
+        default="json",
+        help="Export format for analysis report",
+    )
+    parser.add_argument(
+        "--create-plan",
+        action="store_true",
+        help="Create migration plan based on analysis",
+    )
+    parser.add_argument("--project", help="Analyze specific project only")
+    parser.add_argument(
+        "--skip-work-items",
+        action="store_true",
+        help="Skip querying work items AND omit all work item related fields",
+    )
+    parser.add_argument(
+        "--list-projects",
+        action="store_true",
+        help="List Azure DevOps projects then exit",
+    )
+    parser.add_argument(
+        "--list-repos",
+        metavar="PROJECT",
+        help="List repositories in given project then exit",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Verbose logging and echo effective (sanitized) configuration",
+    )
     args = parser.parse_args(argv)
-    
+
     try:
         analyzer = AzureDevOpsAnalyzer(
             args.config,
             skip_work_items=args.skip_work_items,
-            omit_work_item_fields=args.skip_work_items  # single flag controls both behaviors
+            omit_work_item_fields=args.skip_work_items,  # single flag controls both behaviors
         )
 
         if args.debug:
             # Shallow sanitize of PAT
             cfg_copy = {
                 **analyzer.config,
-                'azure_devops': {
-                    **analyzer.config.get('azure_devops', {}),
-                    'personal_access_token': '***' + analyzer.config.get('azure_devops', {}).get('personal_access_token', '')[-4:]
-                }
+                "azure_devops": {
+                    **analyzer.config.get("azure_devops", {}),
+                    "personal_access_token": "***"
+                    + analyzer.config.get("azure_devops", {}).get(
+                        "personal_access_token", ""
+                    )[-4:],
+                },
             }
             print("[DEBUG] Loaded config from", analyzer._config_file)
             print("[DEBUG] Effective configuration (sanitized):")
@@ -430,40 +488,48 @@ def main(argv=None):
             for r in repos:
                 print(f"• {r['name']}")
             return 0
-        
+
         if args.project:
             # Analyze specific project
             projects = analyzer.client.get_projects()
-            project = next((p for p in projects if p['name'] == args.project), None)
-            
+            project = next((p for p in projects if p["name"] == args.project), None)
+
             if not project:
                 print(f"❌ Project '{args.project}' not found")
                 exit(1)
-            
+
             print(f"🔍 Analyzing project: {args.project}")
             project_analysis = analyzer.analyze_project(project)
-            
+
             analysis = {
-                'organization': analyzer.config['azure_devops']['organization'],
-                'analysis_date': datetime.now().isoformat(),
-                'total_projects': 1,
-                'projects': [project_analysis]
+                "organization": analyzer.config["azure_devops"]["organization"],
+                "analysis_date": datetime.now().isoformat(),
+                "total_projects": 1,
+                "projects": [project_analysis],
             }
         else:
             # Analyze entire organization
             analysis = analyzer.analyze_organization()
-        
+
         # Print summary
         print("\n📊 Analysis Summary:")
         print("=" * 50)
         print(f"Organization: {analysis['organization']}")
         print(f"Projects analyzed: {analysis['total_projects']}")
 
-        total_repos = sum(len(p.get('repositories', [])) for p in analysis['projects'] if 'error' not in p)
+        total_repos = sum(
+            len(p.get("repositories", []))
+            for p in analysis["projects"]
+            if "error" not in p
+        )
         if args.skip_work_items:
             total_work_items = 0
         else:
-            total_work_items = sum(p.get('work_items_count', 0) for p in analysis['projects'] if 'error' not in p)
+            total_work_items = sum(
+                p.get("work_items_count", 0)
+                for p in analysis["projects"]
+                if "error" not in p
+            )
 
         print(f"Total repositories: {total_repos}")
         if not args.skip_work_items:
@@ -484,8 +550,10 @@ def main(argv=None):
         return 0
     except Exception as e:
         print(f"❌ Error: {str(e)}")
-        if args and getattr(args, 'debug', False):
-            import traceback; traceback.print_exc()
+        if args and getattr(args, "debug", False):
+            import traceback
+
+            traceback.print_exc()
         return 1
 
 
