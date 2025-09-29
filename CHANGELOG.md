@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [Unreleased]
+### Summary (pending release)
+- feat(naming): centralized repo & workflow filename normalization with collision handling.
+- chore(types): phase 1 aggressive typing + lint alignment groundwork.
+- docs: expand HOW_TO_GUIDE with normalization behavior.
 
 ### Added
 - Automatic whitespace normalization in repository names: spaces are now converted to underscores "_" by default (e.g. "My Repo" -> "My_Repo") to prevent GitHub name validation failures.
