@@ -17,6 +17,10 @@ Production‑ready CLI to migrate Azure DevOps repositories (and optionally work
 | Diagnostics | `doctor`, placeholder auto‑append, interactive remediation & editor |
 | Interactive UX | Arrow‑key menu (`interactive`) with streamlined diagnostics & env actions |
 | Project Selection UX | Paginated (10 / page) quickstart project picker with Search / filter (substring + fuzzy), Jump to letter, Skip → open menu |
+| Freeze / Unfreeze | Lock ADO repos via Security API before migration, restore after |
+| State Management | Thread-safe JSON state with resume and retry support |
+| Status Dashboard | CLI progress tracking with state file |
+| Verification | Automated branch parity checks post-migration |
 | Safety | Dry runs, rate limiting, retry logic, masked tokens |
 | Reporting | JSON migration reports + verification script integration |
 | Extensibility | Clean Python package layout, tests, semantic versioning |
@@ -142,13 +146,39 @@ azuredevops-github-migration analyze --create-plan
 # 6. Dry run one repo
 azuredevops-github-migration migrate --project P --repo R --dry-run
 
-# 7. Migrate (single or batch)
-azuredevops-github-migration migrate --project P --repo R
-azuredevops-github-migration batch --plan migration_plan_<org>_*.json
+# 7. Freeze source repos (enterprise)
+azuredevops-github-migration freeze --plan migration_plan.json --config config.json --state-file state.json
 
-# 8. Verify & archive source
-./scripts/verify-migration.ps1 -Org <org> -Repo <repo> -Json | ConvertFrom-Json
+# 8. Migrate (single or batch)
+azuredevops-github-migration migrate --project P --repo R
+azuredevops-github-migration batch --plan migration_plan.json --config config.json --state-file state.json --concurrency 4
+
+# 9. Monitor progress
+azuredevops-github-migration status --state-file state.json
+
+# 10. Verify migration
+azuredevops-github-migration verify --state-file state.json --config config.json
+
+# 11. Unfreeze source repos
+azuredevops-github-migration unfreeze --plan migration_plan.json --config config.json --state-file state.json
 ```
+
+### Enterprise Migration (700+ Repos)
+
+For large-scale migrations, use the full enterprise lifecycle with freeze, batch, state tracking, and verification. See the [Enterprise Demo Walkthrough](docs/user-guide/ENTERPRISE_DEMO_WALKTHROUGH.md) for a complete step-by-step guide.
+
+```
+Analyze --> Plan --> Dry Run --> Freeze --> Batch Migrate --> Monitor --> Retry --> Verify --> Unfreeze
+```
+
+Key enterprise flags for `batch`:
+| Flag | Purpose |
+|------|---------|
+| `--concurrency N` | Parallel migration threads (default: 4) |
+| `--state-file F` | State file for resume/retry tracking |
+| `--wave NAME` | Wave label in state file |
+| `--retry-failed` | Re-attempt only failed repos |
+| `--dry-run` | Simulate without changes |
 
 ---
 
@@ -159,6 +189,10 @@ azuredevops-github-migration batch --plan migration_plan_<org>_*.json
 | `analyze` | Inventory org / project & create plan | Planning |
 | `migrate` | Migrate a single repository | Iterative testing / final run |
 | `batch` | Execute plan for multiple repos | Wave migrations |
+| `freeze` | Lock ADO repos (deny push via Security API) | Pre-migration |
+| `unfreeze` | Restore ADO repo permissions from state | Post-migration |
+| `status` | Migration progress dashboard | Monitoring |
+| `verify` | Branch parity verification | Post-migration |
 | `doctor` | Environment & readiness diagnostics | Pre-flight |
 | (env load via Doctor submenu) | PowerShell loader for `.env` | Windows onboarding |
 | `interactive` | Arrow‑key menu wrapper | New users |
@@ -451,10 +485,17 @@ azuredevops-github-migration/
 ├── setup.py                     # Package installation
 │
 ├── src/                        # 🐍 Source Code
-│   ├── migrate.py              # Main migration tool
-│   ├── analyze.py              # Organization analysis  
-│   ├── batch_migrate.py        # Batch operations
-│   └── utils.py                # Shared utilities
+│   ├── cli.py                 # Unified CLI entry point
+│   ├── migrate.py             # Main migration tool
+│   ├── analyze.py             # Organization analysis
+│   ├── batch_migrate.py       # Batch operations with concurrency & state
+│   ├── freeze.py              # ADO repo freeze/unfreeze via Security API
+│   ├── freeze_cli.py          # Freeze/unfreeze CLI entry points
+│   ├── status.py              # Migration status dashboard
+│   ├── verify.py              # Post-migration branch verification
+│   ├── state.py               # Thread-safe JSON state persistence
+│   ├── config.py              # Configuration loading
+│   └── utils.py               # Shared utilities
 │
 ├── config/                     # ⚙️ Configuration Templates
 │   └── config.template.json    # Main configuration template
@@ -469,11 +510,16 @@ azuredevops-github-migration/
 │
 ├── tests/                      # 🧪 Test Suite
 │   ├── test_migrate_basic.py   # Essential tests
-│   └── test_migrate.py         # Comprehensive tests
+│   ├── test_migrate.py         # Comprehensive tests
+│   ├── test_freeze.py          # Freeze/unfreeze tests
+│   ├── test_batch_migrate.py   # Batch migration tests
+│   ├── test_status.py          # Status dashboard tests
+│   └── test_verify.py          # Verification tests
 │
 └── docs/                       # 📚 Documentation
     ├── user-guide/             # User Documentation
     │   ├── HOW_TO_GUIDE.md     # Step-by-step instructions
+    │   ├── ENTERPRISE_DEMO_WALKTHROUGH.md  # Enterprise migration guide
     │   ├── PRE_MIGRATION_CHECKLIST.md  # 100+ item checklist
     │   └── TESTING.md          # Testing procedures
     └── technical/              # Technical Documentation  
