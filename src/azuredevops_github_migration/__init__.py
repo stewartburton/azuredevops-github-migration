@@ -18,6 +18,8 @@ __all__ = [
     "MigrationOrchestrator",
     "AzureDevOpsAnalyzer",
     "RateLimiter",
+    "MigrationState",
+    "AdoRepoFreezer",
     "__version__",
 ]
 
@@ -48,5 +50,13 @@ def __getattr__(name):
         from .utils import RateLimiter
 
         return RateLimiter
+    elif name == "MigrationState":
+        from .state import MigrationState
+
+        return MigrationState
+    elif name == "AdoRepoFreezer":
+        from .freeze import AdoRepoFreezer
+
+        return AdoRepoFreezer
     else:
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
