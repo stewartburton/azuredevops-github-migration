@@ -1,33 +1,32 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-"""Batch migration script for migrating multiple repositories from Azure DevOps to GitHub."""
+"""Batch migration with parallel execution, state tracking, and retry support."""
 
+import argparse
 import json
 import logging
-from typing import Any, Dict, List
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Dict, List, Optional
 
 from .migrate import MigrationOrchestrator
-from .utils import log_migration_summary
+from .state import MigrationState
 
 
 def load_migration_plan(file_path: str) -> List[Dict[str, Any]]:
     """Load migration plan from JSON file."""
-    with open(file_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    # Ensure list of dict shape
-    if not isinstance(data, list):  # pragma: no cover - defensive
-        raise ValueError("Migration plan must be a list of objects")
-    return [d for d in data if isinstance(d, dict)]
+    with open(file_path, "r") as f:
+        return json.load(f)
 
 
 def create_sample_migration_plan():
     """Create a sample migration plan file."""
-    sample_plan = [
+    sample = [
         {
             "project_name": "MyProject",
             "repo_name": "my-first-repo",
             "github_repo_name": "migrated-first-repo",
-            "migrate_issues": True,
+            "migrate_issues": False,
             "description": "First repository to migrate",
         },
         {
@@ -38,121 +37,153 @@ def create_sample_migration_plan():
             "description": "Second repository - code only",
         },
     ]
-
     with open("migration_plan.json", "w") as f:
-        json.dump(sample_plan, f, indent=2)
-
-    print("✅ Sample migration plan created: migration_plan.json")
-    print("Edit this file to specify your repositories to migrate.")
+        json.dump(sample, f, indent=2)
+    print("Sample migration plan created: migration_plan.json")
 
 
-def main():
+def _repo_key(entry: Dict[str, Any]) -> str:
+    return f"{entry['project_name']}/{entry['repo_name']}"
+
+
+def _should_migrate(entry: Dict[str, Any], state: MigrationState, retry_failed: bool) -> bool:
+    """Determine if this repo should be migrated in this run."""
+    key = _repo_key(entry)
+    status = state.get_status(key)
+    if status == "completed" or status == "skipped":
+        return False
+    if retry_failed:
+        return status == "failed"
+    return status in ("pending", "failed", None)
+
+
+def _migrate_single(
+    entry: Dict[str, Any],
+    orchestrator: MigrationOrchestrator,
+    state: MigrationState,
+    dry_run: bool,
+) -> bool:
+    """Migrate a single repo. Updates state on success/failure."""
+    key = _repo_key(entry)
+    state.mark_in_progress(key, step="starting")
+    try:
+        success = orchestrator.migrate_repository(
+            project_name=entry["project_name"],
+            repo_name=entry["repo_name"],
+            github_repo_name=entry.get("github_repo_name", entry["repo_name"]),
+            migrate_issues=entry.get("migrate_issues", False),
+            migrate_pipelines=entry.get("migrate_pipelines", False),
+            dry_run=dry_run,
+        )
+        if success:
+            github_org = orchestrator.config.get("github", {}).get("organization", "")
+            gh_name = entry.get("github_repo_name", entry["repo_name"])
+            state.mark_completed(key, github_url=f"https://github.com/{github_org}/{gh_name}")
+        else:
+            state.mark_failed(key, error="migrate_repository returned False")
+        return success
+    except Exception as e:
+        state.mark_failed(key, error=str(e))
+        return False
+
+
+def run_batch_migration(
+    plan: List[Dict[str, Any]],
+    config_file: str,
+    state: MigrationState,
+    concurrency: int = 4,
+    dry_run: bool = False,
+    retry_failed: bool = False,
+) -> Dict[str, bool]:
+    """Run batch migration with parallel execution and state tracking."""
+    # Register all repos in state
+    for entry in plan:
+        state.add_repo(_repo_key(entry))
+
+    # Filter to repos that need migration
+    to_migrate = [e for e in plan if _should_migrate(e, state, retry_failed)]
+
+    if not to_migrate:
+        print("No repos to migrate (all completed or skipped).")
+        return {}
+
+    orchestrator = MigrationOrchestrator(config_file)
+    results: Dict[str, bool] = {}
+
+    if concurrency <= 1:
+        for entry in to_migrate:
+            key = _repo_key(entry)
+            results[key] = _migrate_single(entry, orchestrator, state, dry_run)
+    else:
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = {}
+            for entry in to_migrate:
+                future = executor.submit(_migrate_single, entry, orchestrator, state, dry_run)
+                futures[future] = _repo_key(entry)
+
+            for future in as_completed(futures):
+                key = futures[future]
+                try:
+                    results[key] = future.result()
+                except Exception as e:
+                    results[key] = False
+                    state.mark_failed(key, error=str(e))
+
+    return results
+
+
+def main(args=None):
     """Main entry point for batch migration."""
-    import argparse
+    parser = argparse.ArgumentParser(description="Batch Azure DevOps to GitHub Migration")
+    parser.add_argument("--config", default="config.json", help="Configuration file path")
+    parser.add_argument("--plan", default="migration_plan.json", help="Migration plan JSON file")
+    parser.add_argument("--state-file", default=None, help="State file for resume/tracking")
+    parser.add_argument("--wave", default="default", help="Wave name for state tracking")
+    parser.add_argument("--concurrency", type=int, default=4, help="Parallel migrations (default: 4)")
+    parser.add_argument("--dry-run", action="store_true", help="Dry run mode")
+    parser.add_argument("--retry-failed", action="store_true", help="Retry only failed repos")
+    parser.add_argument("--create-sample", action="store_true", help="Create sample plan file")
 
-    parser = argparse.ArgumentParser(
-        description="Batch Azure DevOps to GitHub Migration"
-    )
-    parser.add_argument(
-        "--config", default="migration_config.yaml", help="Configuration file path"
-    )
-    parser.add_argument(
-        "--plan", default="migration_plan.json", help="Migration plan JSON file"
-    )
-    parser.add_argument(
-        "--create-sample",
-        action="store_true",
-        help="Create a sample migration plan file",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be migrated without actually doing it",
-    )
+    parsed = parser.parse_args(args)
 
-    args = parser.parse_args()
-
-    if args.create_sample:
+    if parsed.create_sample:
         create_sample_migration_plan()
         return
 
     try:
-        # Load migration plan
-        migration_plan = load_migration_plan(args.plan)
-        # If plan entries omit 'migrate_issues' entirely (Jira / skip-work-items mode), default to False
-        omit_issue_field = all(
-            "migrate_issues" not in entry for entry in migration_plan
+        plan = load_migration_plan(parsed.plan)
+        state_file = parsed.state_file or f"migration_state_{parsed.wave}.json"
+        state = MigrationState(state_file, wave=parsed.wave)
+
+        print(f"Batch migration: {len(plan)} repos, concurrency={parsed.concurrency}")
+        if parsed.dry_run:
+            print("DRY RUN MODE")
+
+        results = run_batch_migration(
+            plan, parsed.config, state,
+            concurrency=parsed.concurrency,
+            dry_run=parsed.dry_run,
+            retry_failed=parsed.retry_failed,
         )
 
-        if args.dry_run:
-            print("🔍 DRY RUN - Showing migration plan:")
-            print("=" * 50)
-            for i, migration in enumerate(migration_plan, 1):
-                print(f"{i}. {migration['project_name']}/{migration['repo_name']}")
-                print(
-                    f"   → GitHub: {migration.get('github_repo_name', migration['repo_name'])}"
-                )
-                print(f"   → Migrate Issues: {migration.get('migrate_issues', True)}")
-                if migration.get("description"):
-                    print(f"   → Description: {migration['description']}")
-                print()
-            print(f"Total repositories to migrate: {len(migration_plan)}")
-            return
-
-        # Initialize orchestrator
-        orchestrator = MigrationOrchestrator(args.config)
-
-        print(f"🚀 Starting batch migration of {len(migration_plan)} repositories...")
-
-        # Perform migrations
-        results = {}
-        for i, migration in enumerate(migration_plan, 1):
-            project_name = migration["project_name"]
-            repo_name = migration["repo_name"]
-            github_repo_name = migration.get("github_repo_name", repo_name)
-            if omit_issue_field:
-                migrate_issues = False
-            else:
-                migrate_issues = migration.get("migrate_issues", True)
-
-            print(
-                f"\n[{i}/{len(migration_plan)}] Migrating {project_name}/{repo_name}..."
-            )
-
-            success = orchestrator.migrate_repository(
-                project_name, repo_name, github_repo_name, migrate_issues
-            )
-
-            results[f"{project_name}/{repo_name}"] = success
-
-            if success:
-                print(f"✅ Successfully migrated {project_name}/{repo_name}")
-            else:
-                print(f"❌ Failed to migrate {project_name}/{repo_name}")
-
-        # Log summary
-        log_migration_summary(results, orchestrator.logger)
-
-        # Calculate success rate
         total = len(results)
-        successful = sum(1 for success in results.values() if success)
-        success_rate = (successful / total * 100) if total > 0 else 0
+        success = sum(1 for v in results.values() if v)
+        rate = (success / total * 100) if total > 0 else 100
 
-        print(f"\n🎯 Batch migration completed!")
-        print(f"Success rate: {success_rate:.1f}% ({successful}/{total})")
+        print(f"\nBatch complete: {rate:.1f}% ({success}/{total})")
+        c = state.counts
+        print(f"  Completed: {c['completed']}  Failed: {c['failed']}  Pending: {c['pending']}")
 
-        if successful < total:
-            print("⚠️  Some migrations failed. Check the logs for details.")
-            exit(1)
+        if c["failed"] > 0:
+            print("Use --retry-failed to retry failed repos.")
+            sys.exit(1)
 
     except FileNotFoundError as e:
-        print(f"❌ File not found: {str(e)}")
-        if "migration_plan.json" in str(e):
-            print("💡 Use --create-sample to create a sample migration plan.")
-        exit(1)
+        print(f"File not found: {e}")
+        sys.exit(1)
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
-        exit(1)
+        print(f"Error: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
