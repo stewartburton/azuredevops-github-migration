@@ -463,7 +463,7 @@ Exit codes: 0 = ran successfully, 2 = `-FailOnMissing` and at least one variable
 
 ## Post-Migration Verification
 
-### CLI Verification (v3.0.0)
+### CLI Verification
 
 ```bash
 azuredevops-github-migration verify --state-file state.json --config config.json
