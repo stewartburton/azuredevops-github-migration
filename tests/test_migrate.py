@@ -6,30 +6,17 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-try:
-    from azuredevops_github_migration.migrate import (
-        AuthenticationError,
-        AzureDevOpsClient,
-        GitHubClient,
-        GitMigrator,
-        MigrationError,
-        MigrationOrchestrator,
-        PipelineConverter,
-    )
+from azuredevops_github_migration.migrate import (
+    AuthenticationError,
+    AzureDevOpsClient,
+    GitHubClient,
+    GitMigrator,
+    MigrationError,
+    MigrationOrchestrator,
+    PipelineConverter,
+)
 
-    PATCH_BASE = "azuredevops_github_migration.migrate"
-except ImportError:  # legacy fallback
-    from src.migrate import (
-        AuthenticationError,
-        AzureDevOpsClient,
-        GitHubClient,
-        GitMigrator,
-        MigrationError,
-        MigrationOrchestrator,
-        PipelineConverter,
-    )
-
-    PATCH_BASE = "src.migrate"
+PATCH_BASE = "azuredevops_github_migration.migrate"
 
 
 class TestAzureDevOpsClient(unittest.TestCase):
