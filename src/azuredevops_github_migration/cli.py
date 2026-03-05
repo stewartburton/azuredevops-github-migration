@@ -43,6 +43,10 @@ Commands:
     migrate     Migrate a single repository or use listing utilities
     analyze     Analyze Azure DevOps organization  
     batch       Batch migrate multiple repositories
+    status      Show migration status from state file
+    freeze      Freeze (lock) ADO repos before migration
+    unfreeze    Unfreeze (unlock) ADO repos after migration
+    verify      Verify migration results
     doctor      Run environment & configuration diagnostics
     update-env  Run Test-MigrationEnv.ps1 to load/update .env variables
     interactive Launch arrow-key interactive menu (requires questionary)
@@ -72,6 +76,18 @@ Examples:
 
         # One-shot quickstart (init + doctor + analyze projects) (new)
         azuredevops-github-migration quickstart --template jira-users
+
+    # Freeze repos before migration
+    azuredevops-github-migration freeze --plan migration_plan.json --config config.json --state-file state.json
+
+    # Check migration status
+    azuredevops-github-migration status --state-file state.json
+
+    # Verify migration results
+    azuredevops-github-migration verify --plan migration_plan.json --config config.json
+
+    # Unfreeze repos after migration
+    azuredevops-github-migration unfreeze --plan migration_plan.json --config config.json --state-file state.json
   
   # Batch migration
   azuredevops-github-migration batch --plan migration_plan.json --config config.json
@@ -131,6 +147,22 @@ def main(args: Optional[List[str]] = None):
             from .batch_migrate import main as batch_main
 
             return batch_main(args[1:])
+        elif command == "status":
+            from .status import main as cmd
+
+            return cmd(args[1:])
+        elif command == "freeze":
+            from .freeze_cli import main as cmd
+
+            return cmd(args[1:])
+        elif command == "unfreeze":
+            from .freeze_cli import main_unfreeze as cmd
+
+            return cmd(args[1:])
+        elif command == "verify":
+            from .verify import main as cmd
+
+            return cmd(args[1:])
         elif command == "doctor":
             from .doctor import main as doctor_main
 
