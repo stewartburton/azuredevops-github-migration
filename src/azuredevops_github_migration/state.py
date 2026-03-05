@@ -179,11 +179,25 @@ class MigrationState:
     # ------------------------------------------------------------------
 
     def _save(self) -> None:
-        """Atomically write state to disk (write-to-tmp + rename)."""
+        """Atomically write state to disk (write-to-tmp + rename).
+
+        On Windows, os.replace can raise PermissionError when the target
+        file is momentarily locked by another thread/process (e.g. antivirus).
+        We retry a few times with a short sleep to handle this.
+        """
         tmp = self._file + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self._data, f, indent=2, default=str)
-        os.replace(tmp, self._file)
+        for attempt in range(5):
+            try:
+                os.replace(tmp, self._file)
+                return
+            except PermissionError:
+                if attempt < 4:
+                    import time
+                    time.sleep(0.01 * (attempt + 1))
+                else:
+                    raise
 
     def _load(self) -> Dict:
         """Read state from disk."""
