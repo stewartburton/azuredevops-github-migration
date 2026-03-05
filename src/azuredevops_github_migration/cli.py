@@ -49,7 +49,7 @@ Commands:
     verify      Verify migration results
     doctor      Run environment & configuration diagnostics
     update-env  Run Test-MigrationEnv.ps1 to load/update .env variables
-    interactive Launch arrow-key interactive menu (requires questionary)
+    interactive Launch arrow-key interactive menu
     help        Show this help message
     version     Show version information
 
@@ -74,7 +74,7 @@ Examples:
     # Verbose debug (echo sanitized config)
     azuredevops-github-migration analyze --debug --list-projects
 
-        # One-shot quickstart (init + doctor + analyze projects) (new)
+        # One-shot quickstart (init + doctor + analyze projects)
         azuredevops-github-migration quickstart --template jira-users
 
     # Freeze repos before migration
@@ -84,7 +84,7 @@ Examples:
     azuredevops-github-migration status --state-file state.json
 
     # Verify migration results
-    azuredevops-github-migration verify --plan migration_plan.json --config config.json
+    azuredevops-github-migration verify --state-file state.json --config config.json
 
     # Unfreeze repos after migration
     azuredevops-github-migration unfreeze --plan migration_plan.json --config config.json --state-file state.json
