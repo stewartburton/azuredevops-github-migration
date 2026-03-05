@@ -6,7 +6,6 @@ A comprehensive production-ready tool for migrating repositories, work items,
 and pipelines from Azure DevOps to GitHub with full Git history preservation.
 """
 
-import asyncio
 import base64
 import json
 import logging
@@ -17,7 +16,6 @@ import subprocess
 import sys
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -28,6 +26,8 @@ import yaml
 from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
 from tqdm import tqdm
+
+from . import __version__
 from urllib3.util.retry import Retry
 
 
@@ -1703,7 +1703,7 @@ class MigrationOrchestrator:
 
         report = {
             "migration_metadata": {
-                "tool_version": "2.0.0",
+                "tool_version": __version__,
                 "migration_date": end_time.isoformat(),
                 "duration_seconds": duration.total_seconds(),
                 "dry_run": dry_run,

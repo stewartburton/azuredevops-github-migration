@@ -22,20 +22,9 @@ try:
     )
 
     IMPORTS_AVAILABLE = True
-except ImportError:
-    try:
-        from src.migrate import (
-            AuthenticationError,
-            AzureDevOpsClient,
-            GitHubClient,
-            MigrationError,
-            MigrationOrchestrator,
-        )
-
-        IMPORTS_AVAILABLE = True
-    except ImportError as e:
-        print(f"Warning: Could not import migrate module: {e}")
-        IMPORTS_AVAILABLE = False
+except ImportError as e:
+    print(f"Warning: Could not import migrate module: {e}")
+    IMPORTS_AVAILABLE = False
 
 
 class TestBasicFunctionality(unittest.TestCase):
@@ -178,10 +167,9 @@ class TestFileStructure(unittest.TestCase):
 
     def test_main_script_exists(self):
         """Test that migrate.py exists."""
-        legacy = os.path.exists("src/migrate.py")
-        new_path = os.path.exists("src/azuredevops_github_migration/migrate.py")
         self.assertTrue(
-            legacy or new_path, "migrate module not found in expected locations"
+            os.path.exists("src/azuredevops_github_migration/migrate.py"),
+            "migrate module not found at src/azuredevops_github_migration/migrate.py",
         )
 
     def test_config_template_exists(self):
@@ -229,8 +217,6 @@ class TestScriptSyntax(unittest.TestCase):
         import py_compile
 
         target = "src/azuredevops_github_migration/migrate.py"
-        if not os.path.exists(target):
-            target = "src/migrate.py"
         try:
             py_compile.compile(target, doraise=True)
         except py_compile.PyCompileError as e:

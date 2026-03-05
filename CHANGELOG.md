@@ -5,6 +5,30 @@ All notable changes to the Azure DevOps to GitHub Migration Tool will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-03-05
+
+### Added
+- Migration state persistence with JSON state files and resume capability
+- ADO repository freeze/unfreeze via Security REST API
+- Parallel batch migration with configurable concurrency
+- CLI status dashboard for migration progress
+- Post-migration branch verification
+- Freeze/unfreeze CLI commands (`ado2gh-freeze`, `ado2gh-unfreeze`)
+- Retry-failed support for batch migrations
+- Dedicated exceptions module (`exceptions.py`)
+- Unified config loading module (`config.py`)
+
+### Changed
+- Batch migration rewritten with ThreadPoolExecutor and state tracking
+- CLI expanded with freeze, unfreeze, status, verify commands
+- Report version now reads from package `__version__` dynamically
+
+### Fixed
+- Removed unused `asyncio` and `ThreadPoolExecutor` imports from migrate.py
+- Fixed test import paths from `src.migrate` to `azuredevops_github_migration.migrate`
+- Fixed hardcoded report version (was `2.0.0`, now dynamic)
+- Fixed `[PLACEHOLDER_` extraction off-by-one in config substitution
+
 ## [2.1.0] - 2024-01-XX
 
 ## [2.2.0] - 2025-09-15

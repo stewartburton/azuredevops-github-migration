@@ -1,13 +1,10 @@
 import logging
 
-try:
-    from azuredevops_github_migration.migrate import (
-        AzureDevOpsClient,
-        GitHubClient,
-        GitMigrator,
-    )
-except ImportError:  # fallback for legacy layout
-    from src.migrate import AzureDevOpsClient, GitHubClient, GitMigrator
+from azuredevops_github_migration.migrate import (
+    AzureDevOpsClient,
+    GitHubClient,
+    GitMigrator,
+)
 
 
 class Dummy:

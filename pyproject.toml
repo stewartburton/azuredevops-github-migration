@@ -90,6 +90,10 @@ ado2gh-migrate = "azuredevops_github_migration.migrate:main"
 ado2gh-analyze = "azuredevops_github_migration.analyze:main"
 ado2gh-batch = "azuredevops_github_migration.batch_migrate:main"
 ado2gh-doctor = "azuredevops_github_migration.doctor:main"
+ado2gh-status = "azuredevops_github_migration.status:main"
+ado2gh-freeze = "azuredevops_github_migration.freeze_cli:main"
+ado2gh-unfreeze = "azuredevops_github_migration.freeze_cli:main_unfreeze"
+ado2gh-verify = "azuredevops_github_migration.verify:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "azuredevops_github_migration.__version__"}

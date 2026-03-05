@@ -5,7 +5,7 @@ A comprehensive production-ready tool for migrating repositories, work items,
 and pipelines from Azure DevOps to GitHub with full Git history preservation.
 """
 
-__version__ = "2.2.0"
+__version__ = "3.0.0"
 __author__ = "Stewart Burton"
 __email__ = "stewart@stewart-burton.com"
 __license__ = "MIT"
@@ -18,6 +18,8 @@ __all__ = [
     "MigrationOrchestrator",
     "AzureDevOpsAnalyzer",
     "RateLimiter",
+    "MigrationState",
+    "AdoRepoFreezer",
     "__version__",
 ]
 
@@ -48,5 +50,13 @@ def __getattr__(name):
         from .utils import RateLimiter
 
         return RateLimiter
+    elif name == "MigrationState":
+        from .state import MigrationState
+
+        return MigrationState
+    elif name == "AdoRepoFreezer":
+        from .freeze import AdoRepoFreezer
+
+        return AdoRepoFreezer
     else:
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
