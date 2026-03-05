@@ -25,7 +25,12 @@ Concise, task‑oriented reference for planning and executing migrations. Deep i
 | Analyze & plan | `azuredevops-github-migration analyze --create-plan` |
 | Dry run repo | `azuredevops-github-migration migrate --project P --repo R --dry-run` |
 | Migrate repo | `azuredevops-github-migration migrate --project P --repo R` |
-| Batch migrate | `azuredevops-github-migration batch --plan migration_plan_<org>_*.json` |
+| Batch migrate | `azuredevops-github-migration batch --plan migration_plan_<org>_*.json --state-file S` |
+| Freeze repos | `azuredevops-github-migration freeze --plan P --config C --state-file S` |
+| Check status | `azuredevops-github-migration status --state-file S` |
+| Verify migration | `azuredevops-github-migration verify --state-file S --config C` |
+| Unfreeze repos | `azuredevops-github-migration unfreeze --plan P --config C --state-file S` |
+| Retry failed | `azuredevops-github-migration batch --plan P --config C --state-file S --retry-failed` |
 | Diagnostics | `azuredevops-github-migration doctor` |
 | Fix env placeholders | `azuredevops-github-migration doctor --doctor-mode fix` |
 | Edit env | `azuredevops-github-migration doctor --doctor-mode edit` |
@@ -120,9 +125,12 @@ azuredevops-github-migration doctor --doctor-mode edit
 | Analyze | Inventory repos & pipelines | `analyze --create-plan` |
 | Review | Adjust generated plan | edit file |
 | Dry Run | Validate one repository | `migrate --dry-run` |
-| Execute | Perform real migration | `migrate` / `batch` |
-| Verify | Confirm integrity | `scripts/verify-migration.ps1` |
-| Archive | Lock source / read-only | manual |
+| Freeze | Lock source repos | `freeze --plan P --config C --state-file S` |
+| Execute | Perform real migration | `migrate` / `batch --state-file S` |
+| Monitor | Track progress | `status --state-file S` |
+| Retry | Re-attempt failures | `batch --state-file S --retry-failed` |
+| Verify | Confirm integrity | `verify --state-file S --config C` |
+| Unfreeze | Restore repo permissions | `unfreeze --plan P --config C --state-file S` |
 
 ## 6. Scenarios
 | Scenario | Key Adjustments |
@@ -142,6 +150,11 @@ azuredevops-github-migration doctor --doctor-mode edit
 | `--pipelines-scope repository` | Limit pipeline conversion to repo-scoped ones |
 | `--exclude-disabled-pipelines` | Skip disabled pipelines |
 | `--verify-remote` | Branch parity check post-push |
+| `--concurrency N` (batch) | Parallel migration threads (default: 4) |
+| `--state-file F` (batch/freeze) | State file for resume/retry tracking |
+| `--wave NAME` (batch) | Wave label in state file |
+| `--retry-failed` (batch) | Re-attempt only failed repos |
+| `--show-errors` (status) | Show error details for failed repos |
 | `--doctor-mode <mode>` | Composite diagnostic shortcuts |
 
 Automatic repository name normalization: If your Azure DevOps repository name contains whitespace (e.g. `"My Repo"`), the migration automatically converts spaces to underscores (`My_Repo`) for the GitHub target unless you explicitly provide `--github-repo`. Other invalid characters still trigger a validation error with a suggested normalized name. This avoids common failures when source naming conventions allowed spaces.
@@ -183,7 +196,33 @@ Configuration (optional) in `config.json`:
 ```
 If the section is omitted, defaults apply. Set `repository.whitespace_strategy` to `dash` if you prefer `my-repo` instead of `My_Repo` when spaces are encountered.
 
+## 7.5 Enterprise Workflow (700+ Repos)
+
+For large-scale migrations, follow the full enterprise lifecycle:
+
+```
+Analyze --> Plan --> Dry Run --> Freeze --> Batch Migrate --> Monitor --> Retry --> Verify --> Unfreeze
+```
+
+Key differences from standard workflow:
+- **Freeze** repos before migration to prevent pushes during the process (requires Security (Manage) PAT scope)
+- **Batch** with `--concurrency` for parallel execution and `--state-file` for resume support
+- **Status** dashboard to monitor progress in real time
+- **Retry** failed repos without re-running completed ones
+- **Verify** branch parity between ADO and GitHub automatically
+- **Unfreeze** restores original permissions from state file
+
+See [ENTERPRISE_DEMO_WALKTHROUGH.md](ENTERPRISE_DEMO_WALKTHROUGH.md) for a complete step-by-step guide with sample data.
+
 ## 8. Verification & Post Steps
+
+CLI verification (v3.0.0):
+```bash
+azuredevops-github-migration verify --state-file state.json --config config.json
+```
+Compares branches between ADO source and GitHub target via `git ls-remote --heads`. Reports missing or extra branches.
+
+PowerShell verification (legacy):
 ```powershell
 ./scripts/verify-migration.ps1 -Org <org> -Repo <repo> -Json | ConvertFrom-Json
 ```
