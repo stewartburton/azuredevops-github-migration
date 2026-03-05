@@ -45,7 +45,7 @@ Flags:
 | `--open-menu` | Automatically launch the interactive menu after the wizard |
 
 Auto-patch behavior:
-If your existing `config.json` still contains legacy placeholders like `"your-organization-name"` or `"your-github-org"`, the wizard will (non-destructively) back up the file (e.g. `config.json.bak.<timestamp>`) and replace those fields with the values from `AZURE_DEVOPS_ORGANIZATION` / `GITHUB_ORGANIZATION` (or their aliases) when available. This prevents early 401 errors like the one you observed.
+If your existing `config.json` still contains legacy placeholders like `"your-organization-name"` or `"your-github-org"`, the wizard will (non-destructively) back up the file (e.g. `config.json.bak.<timestamp>`) and replace those fields with the values from `AZURE_DEVOPS_ORGANIZATION` / `GITHUB_ORGANIZATION` (or their aliases) when available. This prevents early 401 errors caused by stale placeholder values.
 
 Manual path (legacy quick start) for Jira-mode only:
 ```bash
