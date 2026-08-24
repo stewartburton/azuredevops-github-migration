@@ -1,4 +1,4 @@
-# How To Guide – Azure DevOps → GitHub Migration
+# How To Guide - Azure DevOps → GitHub Migration
 
 Concise, task‑oriented reference for planning and executing migrations. Deep internals: see `../technical/` documents.
 
@@ -59,7 +59,7 @@ Query: as  -> AlphaProject, BetaSample (letters appear sequentially in each)
 Behavior notes:
 * Selection updates the recommendation list so the first suggested command becomes `analyze --project <Selected> --create-plan` instead of full org analysis.
 * If you cancel selection the recommendations show `<Project>` placeholders.
-* Choosing Skip launches the full interactive menu immediately (bypasses recommendation printout) – useful after initial discovery.
+* Choosing Skip launches the full interactive menu immediately (bypasses recommendation printout) - useful after initial discovery.
 * The internal project listing always suppresses work item enumeration (`skip_work_items=True`) to minimize required PAT scopes.
 
 ### Automatic Work Item Skipping (Jira Mode)
@@ -82,7 +82,7 @@ azuredevops-github-migration quickstart --non-interactive
 ## 2. Prerequisites
 | Requirement | Notes |
 |-------------|-------|
-| Python ≥ 3.8 | 3.8–3.12 supported |
+| Python ≥ 3.8 | 3.8-3.12 supported |
 | Git | In PATH |
 | Azure DevOps PAT | Code (Read), Project & Team (Read) minimum |
 | GitHub PAT | `repo` (add `admin:org` only if creating repos) |
@@ -378,7 +378,7 @@ Template evolution (September 2025): Earlier versions only included the two toke
 1. Manually add the two lines above, OR
 2. Run `azuredevops-github-migration doctor --fix-env` to append any missing canonical placeholders (it never overwrites existing values).
 
-Alias compatibility: `AZURE_DEVOPS_ORG` and `GITHUB_ORG` remain accepted, but new docs & outputs prefer the canonical names. The `--fix-env` option will still append canonical placeholders even if only an alias is currently present – this is intentional to encourage consistency.
+Alias compatibility: `AZURE_DEVOPS_ORG` and `GITHUB_ORG` remain accepted, but new docs & outputs prefer the canonical names. The `--fix-env` option will still append canonical placeholders even if only an alias is currently present - this is intentional to encourage consistency.
 
 #### (New) Loading Environment Variables Automatically
 
@@ -470,13 +470,13 @@ Use least privilege. Start with the minimum scopes and add only if the tool repo
 ### Required Personal Access Token (PAT) Scopes
 
 #### Azure DevOps PAT
-**Minimum** (repository migration only – no work items):
+**Minimum** (repository migration only - no work items):
 - Code: Read (clone repositories, enumerate branches/tags)
 - Project and Team: Read (list projects & repos)
 
 **Add ONLY if needed:**
 - Work Items: Read (when converting work items to GitHub issues; omit when using `--no-issues` or Jira)
-- Code: Read & Write (only if you intentionally push changes back to Azure DevOps – not required for one‑way migration)
+- Code: Read & Write (only if you intentionally push changes back to Azure DevOps - not required for one‑way migration)
 
 #### GitHub PAT
 **Minimum** (target repos already exist or created manually):
@@ -501,7 +501,7 @@ Use least privilege. Start with the minimum scopes and add only if the tool repo
     - Add Work Items (Read) ONLY if migrating issues.
 5. Click **Create** and copy the token immediately (cannot be recovered later).
 
-#### GitHub (Fine‑grained PAT – Recommended)
+#### GitHub (Fine‑grained PAT - Recommended)
 1. GitHub → **Settings** (profile) → **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**.
 2. **Token name**: e.g. `gh-migration-fg`.
 3. **Expiration**: Select a short duration matching migration window.
@@ -513,7 +513,7 @@ Use least privilege. Start with the minimum scopes and add only if the tool repo
     - **Issues**: Read & write (only if migrating work items → GitHub issues).
 7. Generate token and copy it once. Store securely.
 
-#### GitHub (Classic PAT – When Fine‑grained Not Suitable)
+#### GitHub (Classic PAT - When Fine‑grained Not Suitable)
 1. GitHub → **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)** → **Generate new token**.
 2. **Note**: Provide a descriptive name, set a short expiration.
 3. Select scopes:

@@ -3,7 +3,7 @@ Post-Migration Verification Checklist
 
 Purpose: Provide a fast, repeatable validation that an Azure DevOps → GitHub migration succeeded (code, pipelines, and optionally issues). Run these steps per repository immediately after each migration and before handing off to application teams.
 
-> TIP: Keep a copy of this file and tick items off. Fail fast—stop and remediate before proceeding if a critical item fails.
+> TIP: Keep a copy of this file and tick items off. Fail fast - stop and remediate before proceeding if a critical item fails.
 
 ---
 1. Core Repository Integrity
@@ -149,7 +149,7 @@ If using Jira or --no-issues: mark Not in scope.
 10. Troubleshooting Quick Hints
 -------------------------------
 - Missing workflow: Re-run migration after workflow auto-commit feature, or manually commit YAML.
-- Workflow failed: Likely secret / runner image mismatch—check runs-on and secrets.
+- Workflow failed: Likely secret / runner image mismatch - check runs-on and secrets.
 - Commit discrepancy: Confirm you did not use --no-git; inspect report JSON for commits_migrated.
 - No issues migrated but expected: Ensure config migrate_work_items=true and you did not pass --no-issues / --skip-work-items during analysis.
 
